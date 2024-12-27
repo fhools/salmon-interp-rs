@@ -1,0 +1,13 @@
+[package]
+name = "salmon-interp-rs"
+version = "0.1.0"
+authors = ["fhools"]
+edition = "2021"
+
+[lib]
+name = "interp"
+path = "src/lib.rs" 
+
+[dependencies]
+thiserror = "1.0.26"
+lazy_static = "1.4.0"
