@@ -78,10 +78,10 @@ lazy_static! {
     };
 }
 #[derive(Debug, Clone)]
-pub(crate) struct Token {
-    token_type: TokenType,
-    lexeme: String,
-    line: usize,
+pub struct Token {
+    pub token_type: TokenType,
+    pub lexeme: String,
+    pub line: usize,
 }
 
 impl Token {
@@ -93,15 +93,11 @@ impl Token {
         }
     }
 
-
-    pub fn to_string(&self) -> String {
-        format!("{:?} {}", self.token_type, self.lexeme)
-    }
 }
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), std::fmt::Error> {
-        write!(f, "{}", self.to_string())
+        write!(f, "{:?} {}", self.token_type, self.lexeme)
     }
 }
 
