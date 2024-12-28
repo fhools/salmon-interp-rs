@@ -93,6 +93,7 @@ impl Token {
         }
     }
 
+
     pub fn to_string(&self) -> String {
         format!("{:?} {}", self.token_type, self.lexeme)
     }
@@ -113,9 +114,19 @@ pub(crate) struct Scanner {
 }
 
 impl Scanner {
-    fn new(source: String) -> Self {
+    //fn new(source: String) -> Self {
+    //    Scanner {
+    //        source,
+    //        tokens: vec![],
+    //        start: 0,
+    //        current: 0,
+    //        line: 1,
+    //    }
+    //}
+
+    pub fn new<S: Into<String>>(source: S) -> Self {
         Scanner {
-            source,
+            source: source.into(),
             tokens: vec![],
             start: 0,
             current: 0,
@@ -360,31 +371,29 @@ mod test {
     use super::Scanner;
 
     #[test]
-    #[ignore]
     fn scanner_single_char() {
-        let mut scanner = Scanner::new("+ + - ".to_string());
+        let mut scanner = Scanner::new("+ + - ");
         let tokens = scanner.scan_tokens();
         println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);
     }
     #[test]
-    #[ignore]
     fn scanner_string() {
-        let mut scanner = Scanner::new("\"test\"".to_string());
+        let mut scanner = Scanner::new("\"test\"");
         let tokens = scanner.scan_tokens();
         println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);
     }
     #[test]
     fn scanner_number() {
-        let mut scanner = Scanner::new("10.50".to_string());
+        let mut scanner = Scanner::new("10.50");
         let tokens = scanner.scan_tokens();
         println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);
     }
     #[test]
     fn scanner_identifier() {
-        let mut scanner = Scanner::new("this is a test".to_string());
+        let mut scanner = Scanner::new("this is a test");
         let tokens = scanner.scan_tokens();
         println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);

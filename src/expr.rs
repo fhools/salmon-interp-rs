@@ -1,22 +1,8 @@
 use super::lex;
-trait ExprVisitor {
-    fn visit_assignexpr(&mut self, expr: &AssignExpr) -> bool;
-    fn visit_binaryexpr(&mut self, expr: &BinaryExpr) -> bool;
-    fn visit_callexpr(&mut self, expr: &CallExpr) -> bool;
-    fn visit_getexpr(&mut self, expr: &GetExpr) -> bool;
-    fn visit_groupingexpr(&mut self, expr: &GroupingExpr) -> bool;
-    fn visit_literalexpr(&mut self, expr: &LiteralExpr) -> bool;
-    fn visit_logicalexpr(&mut self, expr: &LogicalExpr) -> bool;
-    fn visit_setexpr(&mut self, expr: &SetExpr) -> bool;
-    fn visit_superexpr(&mut self, expr: &SuperExpr) -> bool;
-    fn visit_thisexpr(&mut self, expr: &ThisExpr) -> bool;
-    fn visit_unaryexpr(&mut self, expr: &UnaryExpr) -> bool;
-    fn visit_variableexpr(&mut self, expr: &VariableExpr) -> bool;
+trait ExprVisitor<R> {
+    fn visit_expr(&mut self, expr: &Expr) -> R;
 }
 
-trait ExprVisitable {
-    fn accept(&self, v: &Box<dyn ExprVisitor>);
-}
 enum Expr {
     Binary(BinaryExpr),
     Call(CallExpr),
@@ -30,6 +16,7 @@ enum Expr {
     Unary(UnaryExpr),
     Variable(VariableExpr),
 }
+
 struct AssignExpr {
     name: lex::Token,
     value: Box<Expr>,
@@ -50,3 +37,22 @@ struct SuperExpr;
 struct ThisExpr;
 struct UnaryExpr;
 struct VariableExpr;
+
+struct PrintVisitor();
+
+//impl ExprVisitor<()> for PrintVisitor {
+//    fn visit_expr(&mut self, expr: &Expr) {
+//        match expr {
+//            Expr::Binary(b) => {
+//                println!("{} {} {}", left, op , right)
+//            },
+//            Expr::Call(_) => {},
+//            Expr::Get(_) => {},
+//        }
+//
+//    }
+//
+//}
+
+
+
