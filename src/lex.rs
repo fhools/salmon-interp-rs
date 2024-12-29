@@ -204,6 +204,7 @@ impl Scanner {
             }
 
             '/' => {
+                // '//' means a comment
                 if self.match_char('/') {
                     while let Some(c) = self.peek() {
                         self.advance();
@@ -363,6 +364,7 @@ impl Scanner {
         self.is_alpha(ch) || self.is_digit(ch)
     }
 
+    // match a character and advance the cursor if matched
     fn match_char(&mut self, ch: char) -> bool {
         if self.is_at_end() || self.source.chars().nth(self.current).unwrap() != ch {
             return false;
@@ -407,6 +409,13 @@ mod test {
     #[test]
     fn scanner_comments() {
         let mut scanner = Scanner::new("//comment \n this");
+        let tokens = scanner.scan_tokens();
+        println!("tokens: {:?}", tokens);
+        assert!(tokens.len() > 0);
+        assert_eq!(tokens[0].token_type, TokenType::This);
+
+        // handle corner case of empty comment
+        scanner = Scanner::new("//\nthis");
         let tokens = scanner.scan_tokens();
         println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);
