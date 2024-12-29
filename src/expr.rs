@@ -4,7 +4,7 @@ trait ExprVisitor<R> {
 }
 
 #[derive(Debug)]
-enum Expr {
+pub enum Expr {
     Binary(BinaryExpr),
     Call(CallExpr),
     Get(GetExpr),
@@ -18,42 +18,63 @@ enum Expr {
     Variable(VariableExpr),
 }
 
+#[derive(Debug, Clone)]
+pub enum LoxValue {
+    Nil,
+    Bool(bool),
+    Number(f32),
+    String(String)
+}
+
+impl ToString for LoxValue {
+    fn to_string(&self) -> String {
+        match self {
+            LoxValue::Nil => "nil".to_string(),
+            LoxValue::Bool(b) => format!("{}", b),
+            LoxValue::Number(n) => format!("{}", n),
+            LoxValue::String(s) => s.clone()
+        }
+    }
+}
 #[derive(Debug)]
-struct AssignExpr {
+pub struct AssignExpr {
     name: lex::Token,
     value: Box<Expr>,
 }
 
 #[derive(Debug)]
-struct BinaryExpr {
-    left: Box<Expr>,
-    op: lex::Token,
-    right: Box<Expr>,
+pub struct BinaryExpr {
+    pub left: Box<Expr>,
+    pub op: lex::Token,
+    pub right: Box<Expr>,
 }
 #[derive(Debug)]
-struct CallExpr;
+pub struct CallExpr;
 #[derive(Debug)]
-struct GetExpr;
+pub struct GetExpr;
 #[derive(Debug)]
-struct GroupingExpr;
+pub struct GroupingExpr;
 #[derive(Debug)]
-struct LiteralExpr {
-   val: String 
+pub struct LiteralExpr {
+   pub val: LoxValue
 }
 #[derive(Debug)]
-struct LogicalExpr;
+pub struct LogicalExpr;
 #[derive(Debug)]
-struct SetExpr;
+pub struct SetExpr;
 #[derive(Debug)]
-struct SuperExpr;
+pub struct SuperExpr;
 #[derive(Debug)]
-struct ThisExpr;
+pub struct ThisExpr;
 #[derive(Debug)]
-struct UnaryExpr;
+pub struct UnaryExpr {
+    pub op: lex::Token,
+    pub val: LoxValue
+}
 #[derive(Debug)]
-struct VariableExpr;
+pub struct VariableExpr;
 
-struct PrintVisitor;
+pub struct PrintVisitor;
 impl ExprVisitor<String> for PrintVisitor {
     fn visit_expr(&mut self, expr: &Expr) -> String {
         match expr {
@@ -63,7 +84,7 @@ impl ExprVisitor<String> for PrintVisitor {
             Expr::Call(_) => { String::new()},
             Expr::Get(_) => {String::new()},
             Expr::Grouping(_) => {String::new()},
-            Expr::Literal(lit) => {lit.val.clone()},
+            Expr::Literal(lit) => {lit.val.to_string()},
             Expr::Logical(LogicalExpr) => {String::new()},
             Expr::Set(SetExpr) => {String::new()},
             Expr::Super(SuperExpr) => {String::new()},
@@ -80,12 +101,16 @@ mod test {
     use super::*;
     use super::lex::{TokenType};
 
+    fn lox_num(n: f32) -> LoxValue {
+        LoxValue::Number(n)
+    }
+
     #[test]
     fn print_expr() {
         let bexpr = Expr::Binary(BinaryExpr{ 
-            left: Box::new(Expr::Literal(LiteralExpr{val: "1".to_string()})),
+            left: Box::new(Expr::Literal(LiteralExpr{val: lox_num(1.0)})),
             op: lex::Token::new(TokenType::Plus, "+".to_string(), 0),
-            right: Box::new(Expr::Literal(LiteralExpr{val: "2".to_string()})),
+            right: Box::new(Expr::Literal(LiteralExpr{val: lox_num(2.0)})),
         });
         let mut visitor =  PrintVisitor{};
         let output = visitor.visit_expr(&bexpr);

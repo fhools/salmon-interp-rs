@@ -30,7 +30,7 @@ pub(crate) enum TokenType {
     LessEqual,
 
     // Literals
-    Identifier,
+    Identifier(String),
     String(String),
     Number(f32),
 
@@ -53,6 +53,16 @@ pub(crate) enum TokenType {
     While,
 
     Eof,
+}
+
+#[macro_export]
+macro_rules! LoxToken {
+    ($tok:ident) => {
+        $crate::lex::TokenType::$tok
+    };
+    ($tok:ident($arg: expr)) => {
+        $crate::lex::TokenType::$tok($arg)
+    };
 }
 
 lazy_static! {
@@ -250,10 +260,12 @@ impl Scanner {
         let token_type;
         if let Some(tok) = KEYWORDS.get(text.as_str()) {
             token_type = tok.to_owned();
+            self.add_token(token_type)
         } else {
-            token_type = TokenType::Identifier;
+            token_type = TokenType::Identifier(text.clone());
+            // TODO: change Identifier to Identifer(String) to store the identifier name directly
+            self.add_token_lexeme(token_type, text);
         }
-        self.add_token(token_type)
     }
     fn number(&mut self) {
         while let Some(t) = self.peek() {
