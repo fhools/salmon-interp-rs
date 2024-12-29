@@ -1,6 +1,8 @@
 use crate::lex::{Token, TokenType};
-use crate::{LoxToken};
+use crate::LoxToken;
 use super::expr::*;
+use crate::error::ParseError;
+use super::salmon_error;
 pub(crate) struct Parser {
     tokens: Vec<Token>,
 
@@ -62,6 +64,25 @@ impl Parser {
         &self.tokens[self.current]
     }
 
+    fn consume(&mut self, tok_type: &TokenType, expected_str: &'static str) -> Result<(), ParseError> {
+        if self.check(tok_type) {
+            self.advance();
+            Ok(())
+        } else {
+            Err(ParseError::General(self.peek().clone(), expected_str.to_string()))
+        }
+    }
+
+    fn parse(&mut self) -> Result<Box<Expr>, ParseError> {
+       let expr = self.expression();
+       let mut errorVisitor = ErrorVisitor::new();
+       errorVisitor.visit_expr(&expr);
+       if errorVisitor.has_error_node() {
+           Err(ParseError::General(self.previous().clone(), "top level parse failed".to_string()))
+       } else {
+           Ok(expr)
+       }
+    }
 
     // expression := equality
     fn expression(&mut self) -> Box<Expr> {
@@ -143,17 +164,52 @@ impl Parser {
                     Expr::Literal(LiteralExpr{ val: LoxValue::Bool(false) }),
                 TokenType::Nil => 
                     Expr::Literal(LiteralExpr{ val: LoxValue::Nil}),
-                    _ => { panic!("expected literal");} 
+                    _ => { Expr::ParseError }
             };
             Box::new(expr)
         } else if self.match_any_of(&[LoxToken![LeftParen]]) {
             let expr = self.expression();
-            self.match_any_of(&[LoxToken![RightParen]]);
-            expr
+            let result = self.consume(&LoxToken![RightParen], "expected ')' after expression");
+            match result {
+                Ok(_) => {
+                    Box::new(Expr::Grouping(GroupingExpr{ group: Box::new(*expr) }))
+                },
+                Err(_) => {
+                    Box::new(Expr::ParseError)
+                }
+            }
         } else {
-            panic!("could not match primary");
+            let tok = self.peek().to_owned();
+            self.error(&tok, "parse primary fail");
+            Box::new(Expr::ParseError)
         }
     }
+
+    fn error(&mut self, tok: &Token, msg: impl Into<String>) {
+        let m = format!("parse error on token type: {:?} msg: {}", tok.token_type, msg.into());
+        salmon_error(tok.line, m.as_str());
+    }
+
+    fn synchronize(&mut self) {
+        // skip over bad token
+        self.advance();
+        while !self.is_at_end() {
+            if self.previous().token_type == TokenType::Semicolon {
+                return;
+            }
+            // sychronization points
+            match self.peek().token_type {
+                TokenType::Class | TokenType::For | TokenType::Fun |
+                TokenType::If | TokenType::Print | TokenType::Return |
+                TokenType::Var | TokenType::While => 
+                { return; },
+                _ => {}
+            }
+            // keep consuming tokens 
+            self.advance();
+        }
+    }
+
 }
 
 mod test {
@@ -192,6 +248,35 @@ mod test {
         let mut parser = Parser::new(&gen_tokens("1 2 3 4"));
         let matched = parser.match_any_of(&[num_tok(1.0).token_type]);
         assert!(matched);
+    }
+
+    #[test]
+    fn test_parser_parse() {
+        let mut parser = Parser::new(&gen_tokens("1+2"));
+        let expr = parser.parse();
+        if expr.is_ok() {
+            let print_output  = expr.as_ref().map(|e| {
+                let mut print_visitor = PrintVisitor{};
+                print_visitor.visit_expr(&e)
+            }).unwrap_or("issue".to_string());
+            eprintln!("parse() returned: {}", print_output);
+        }
+        assert!(expr.is_ok());
+    }
+
+    #[test]
+    fn test_parser_parse_bad() {
+        let mut parser = Parser::new(&gen_tokens("1+"));
+        let expr = parser.parse();
+        if expr.is_ok() {
+            let print_output  = expr.as_ref().map(|e| {
+                let mut print_visitor = PrintVisitor{};
+                print_visitor.visit_expr(&e)
+            }).unwrap_or("issue".to_string());
+            eprintln!("parse_bad test - parse() returned: {}", print_output);
+        } else {
+            eprintln!("parse failed as expected");
+        }
     }
 }
 

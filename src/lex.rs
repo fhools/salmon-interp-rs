@@ -1,4 +1,5 @@
 use crate::SalmonInterp;
+use crate::salmon_error;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -239,7 +240,7 @@ impl Scanner {
             }
 
             _ => {
-                SalmonInterp::error(self.line, "unexpected char");
+                salmon_error(self.line, "unexpected char");
             }
         }
     }
@@ -307,7 +308,7 @@ impl Scanner {
         }
 
         if self.is_at_end() {
-            SalmonInterp::error(self.line, "unterminated string.");
+            salmon_error(self.line, "unterminated string.");
         }
         self.advance();
         let lexeme = self.source[self.start..self.current].to_string();

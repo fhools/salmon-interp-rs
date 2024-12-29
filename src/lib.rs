@@ -19,17 +19,19 @@ impl SalmonInterp {
         SalmonInterp { had_error: false }
     }
 
-    pub fn error(line: usize, message: &str) {
-        SalmonInterp::report(line, "", message);
-    }
+}
 
-    pub fn report(line: usize, w: &str, m: &str) {
-        let e = format!("[line {}] Error {}: {}", line, w, m);
-        println!("{}", e);
-        SALMON_INTERP.lock().unwrap().had_error = true;
-    }
+pub fn salmon_error(line: usize, message: &str) {
+    salmon_report(line, "", message);
+}
+
+pub fn salmon_report(line: usize, w: &str, m: &str) {
+    let e = format!("[line {}] Error {}: {}", line, w, m);
+    println!("{}", e);
+    SALMON_INTERP.lock().unwrap().had_error = true;
 }
 
 mod expr;
 mod lex;
 mod parser;
+pub mod error;

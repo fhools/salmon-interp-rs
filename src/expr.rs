@@ -1,7 +1,5 @@
 use super::lex;
-trait ExprVisitor<R> {
-    fn visit_expr(&mut self, expr: &Expr) -> R;
-}
+
 
 #[derive(Debug)]
 pub enum Expr {
@@ -16,6 +14,7 @@ pub enum Expr {
     This(ThisExpr),
     Unary(UnaryExpr),
     Variable(VariableExpr),
+    ParseError
 }
 
 #[derive(Debug, Clone)]
@@ -52,8 +51,12 @@ pub struct BinaryExpr {
 pub struct CallExpr;
 #[derive(Debug)]
 pub struct GetExpr;
+
 #[derive(Debug)]
-pub struct GroupingExpr;
+pub struct GroupingExpr {
+    pub group: Box<Expr>
+}
+
 #[derive(Debug)]
 pub struct LiteralExpr {
    pub val: LoxValue
@@ -74,12 +77,19 @@ pub struct UnaryExpr {
 #[derive(Debug)]
 pub struct VariableExpr;
 
+pub trait ExprVisitor<R> {
+    fn visit_expr(&mut self, expr: &Expr) -> R;
+}
+
 pub struct PrintVisitor;
 impl ExprVisitor<String> for PrintVisitor {
     fn visit_expr(&mut self, expr: &Expr) -> String {
         match expr {
             Expr::Binary(b) => {
-                format!("{} {:?} {}", self.visit_expr(&b.left), b.op.lexeme , self.visit_expr(&b.right))
+                format!("({} {} {})",
+                        b.op.lexeme,
+                        self.visit_expr(&b.left),
+                        self.visit_expr(&b.right))
             },
             Expr::Call(_) => { String::new()},
             Expr::Get(_) => {String::new()},
@@ -91,12 +101,53 @@ impl ExprVisitor<String> for PrintVisitor {
             Expr::This(ThisExpr) => {String::new()},
             Expr::Unary(UnaryExpr) => {String::new()},
             Expr::Variable(VariableExpr) => {String::new()},
+            Expr::ParseError => "parse_error".to_string()
         }
 
     }
 
 }
 
+pub struct ErrorVisitor {
+    has_error: bool
+}
+
+impl ExprVisitor<()> for ErrorVisitor {
+    fn visit_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Binary(b) => {
+                self.visit_expr(&b.left);
+                self.visit_expr(&b.right);
+            },
+            Expr::Call(_) => { },
+            Expr::Get(_) => {},
+            Expr::Grouping(grp) => {
+                self.visit_expr(&grp.group);
+            },
+            Expr::Literal(_lit) => {},
+            Expr::Logical(LogicalExpr) => {},
+            Expr::Set(SetExpr) => {},
+            Expr::Super(SuperExpr) => {},
+            Expr::This(ThisExpr) => {},
+            Expr::Unary(_unary) => {},
+            Expr::Variable(VariableExpr) => {},
+            Expr::ParseError =>  {
+                self.has_error = true;
+            }
+        }
+    }
+}
+
+impl ErrorVisitor {
+    pub fn new() -> Self {
+        ErrorVisitor {
+            has_error: false
+        }
+    }
+    pub fn has_error_node(&self) -> bool {
+        self.has_error
+    }
+}
 mod test {
     use super::*;
     use super::lex::{TokenType};
