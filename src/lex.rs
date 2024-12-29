@@ -29,8 +29,9 @@ pub(crate) enum TokenType {
     Less,
     LessEqual,
 
-    // Literals
     Identifier(String),
+
+    // Literals
     String(String),
     Number(f32),
 
@@ -204,16 +205,10 @@ impl Scanner {
 
             '/' => {
                 if self.match_char('/') {
-                    loop {
-                        match self.peek() {
-                            Some(c) => {
-                                if c == '\n' && !self.is_at_end() {
-                                    self.advance();
-                                }
-                            }
-                            None => {
-                                break;
-                            }
+                    while let Some(c) = self.peek() {
+                        self.advance();
+                        if c == '\n' {
+                            break
                         }
                     }
                 } else {
@@ -369,18 +364,16 @@ impl Scanner {
     }
 
     fn match_char(&mut self, ch: char) -> bool {
-        if self.is_at_end() {
-            return false;
-        } else if self.source.chars().nth(self.current).unwrap() != ch {
+        if self.is_at_end() || self.source.chars().nth(self.current).unwrap() != ch {
             return false;
         }
         self.current += 1;
-        return true;
+        true
     }
 }
 
 mod test {
-    use super::Scanner;
+    use super::{TokenType, Scanner};
 
     #[test]
     fn scanner_single_char() {
@@ -409,5 +402,14 @@ mod test {
         let tokens = scanner.scan_tokens();
         println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);
+    }
+
+    #[test]
+    fn scanner_comments() {
+        let mut scanner = Scanner::new("//comment \n this");
+        let tokens = scanner.scan_tokens();
+        println!("tokens: {:?}", tokens);
+        assert!(tokens.len() > 0);
+        assert_eq!(tokens[0].token_type, TokenType::This);
     }
 }
