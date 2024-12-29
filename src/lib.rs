@@ -32,3 +32,4 @@ impl SalmonInterp {
 
 mod expr;
 mod lex;
+mod parser;

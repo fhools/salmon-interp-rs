@@ -4,7 +4,7 @@ use std::fmt;
 
 use lazy_static::lazy_static;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone,  PartialEq)]
 pub(crate) enum TokenType {
     // Single character
     LeftParen,
@@ -134,7 +134,7 @@ impl Scanner {
         self.current >= self.source.len()
     }
 
-    fn scan_tokens(&mut self) -> Vec<Token> {
+    pub fn scan_tokens(&mut self) -> Vec<Token> {
         while !self.is_at_end() {
             self.start = self.current;
             self.scan_token();
@@ -256,8 +256,12 @@ impl Scanner {
         self.add_token(token_type)
     }
     fn number(&mut self) {
-        while self.is_digit(self.peek().unwrap()) {
-            self.advance();
+        while let Some(t) = self.peek() {
+            if self.is_digit(t) {
+                self.advance();
+            } else {
+                break;
+            }
         }
 
         if let Some(c) = self.peek() {
