@@ -288,14 +288,10 @@ mod test {
     #[test]
     fn test_parse_binary_expr2() {
         let expr = do_expr("1+2+3")
-            .ok()
-            .map(|e| {
-                let mut print_visitor = PrintVisitor{};
-                print_visitor.visit_expr(&e) 
-            })
-        .or_else(|| {
-            Some("error".to_string())
-        }).unwrap();
+            .map(|expr| expr.to_string())
+            .unwrap_or_else(|_| {
+                "error".to_string()
+            });
         assert_eq!(expr, "(+ (+ 1 2) 3)");
     }
 }

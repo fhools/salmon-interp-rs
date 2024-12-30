@@ -1,5 +1,5 @@
 use super::lex;
-
+use std::fmt::{self, Display};
 
 #[derive(Debug)]
 pub enum Expr {
@@ -35,6 +35,14 @@ impl ToString for LoxValue {
         }
     }
 }
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut printer = PrintVisitor;
+        write!(f, "{}", printer.visit_expr(self))
+    }
+}
+
 #[derive(Debug)]
 pub struct AssignExpr {
     name: lex::Token,
