@@ -78,7 +78,10 @@ impl Parser {
        let mut errorVisitor = ErrorVisitor::new();
        errorVisitor.visit_expr(&expr);
        if errorVisitor.has_error_node() {
-           Err(ParseError::General(self.previous().clone(), "top level parse failed".to_string()))
+           let mut print_visitor = PrintVisitor{};
+           let err_print = print_visitor.visit_expr(&expr);
+           println!("err print: {}", err_print);
+           Err(ParseError::General(self.previous().clone(), format!("err ast: {}", err_print)))
        } else {
            Ok(expr)
        }
@@ -231,6 +234,10 @@ mod test {
         Token::new(TokenType::Number(n), n.to_string(), 1)
     }
 
+    fn do_expr(source: impl Into<String>) -> Result<Box<Expr>, ParseError> {
+        let mut parser = Parser::new(&gen_tokens(source.into().as_str()));
+        parser.parse()
+    }
     #[test]
     fn test_parse_cursor() {
         let mut parser = Parser::new(&create_tokens());
@@ -277,6 +284,19 @@ mod test {
         } else {
             eprintln!("parse failed as expected");
         }
+    }
+    #[test]
+    fn test_parse_binary_expr2() {
+        let expr = do_expr("1+2+3")
+            .ok()
+            .map(|e| {
+                let mut print_visitor = PrintVisitor{};
+                print_visitor.visit_expr(&e) 
+            })
+        .or_else(|| {
+            Some("error".to_string())
+        }).unwrap();
+        assert_eq!(expr, "(+ (+ 1 2) 3)");
     }
 }
 
