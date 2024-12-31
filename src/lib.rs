@@ -31,7 +31,8 @@ pub fn salmon_report(line: usize, w: &str, m: &str) {
     SALMON_INTERP.lock().unwrap().had_error = true;
 }
 
-mod expr;
-mod lex;
-mod parser;
+pub mod expr;
+pub mod lex;
+pub mod parser;
 pub mod error;
+pub mod interp;

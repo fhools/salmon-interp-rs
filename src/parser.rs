@@ -1,4 +1,4 @@
-use crate::lex::{Token, TokenType};
+use crate::lex::{Token, TokenType, gen_tokens};
 use crate::LoxToken;
 use super::expr::*;
 use crate::error::ParseError;
@@ -145,7 +145,9 @@ impl Parser {
     //        |  primary
     fn unary(&mut self) -> Box<Expr> {
         if self.match_any_of(&[LoxToken![Bang], LoxToken![Minus]]) {
-            return self.unary();
+            let op = self.previous().clone();
+            let expr = self.unary();
+            Box::new(Expr::Unary(UnaryExpr{ op, expr }))
         } else {
             return self.primary();
         }
@@ -215,9 +217,13 @@ impl Parser {
 
 }
 
+pub fn do_expr(source: impl Into<String>) -> Result<Box<Expr>, ParseError> {
+    let mut parser = Parser::new(&gen_tokens(source.into().as_str()));
+    parser.parse()
+}
 mod test {
 
-    use super::super::lex::{Scanner, TokenType};
+    use super::super::lex::{Scanner, TokenType, gen_tokens};
     use super::*;
 
     fn create_tokens() -> Vec<Token> {
@@ -225,19 +231,10 @@ mod test {
         scanner.scan_tokens()
     }
 
-    fn gen_tokens<S: Into<String>>(source: S) -> Vec<Token> {
-        let mut scanner = Scanner::new(source.into());
-        scanner.scan_tokens()
-    }
-
     fn num_tok(n: f32) -> Token {
         Token::new(TokenType::Number(n), n.to_string(), 1)
     }
 
-    fn do_expr(source: impl Into<String>) -> Result<Box<Expr>, ParseError> {
-        let mut parser = Parser::new(&gen_tokens(source.into().as_str()));
-        parser.parse()
-    }
     #[test]
     fn test_parse_cursor() {
         let mut parser = Parser::new(&create_tokens());
@@ -293,6 +290,15 @@ mod test {
                 "error".to_string()
             });
         assert_eq!(expr, "(+ (+ 1 2) 3)");
+    }
+    #[test]
+    fn test_parse_unary_expr() {
+        let expr = do_expr("1 + 2 + 3 + -4")
+            .map(|expr| expr.to_string())
+            .unwrap_or_else(|_| {
+                "error".to_string()
+            });
+        assert_eq!(expr, "(+ (+ (+ 1 2) 3) (- 4))");
     }
 }
 

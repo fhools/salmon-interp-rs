@@ -80,7 +80,7 @@ pub struct ThisExpr;
 #[derive(Debug)]
 pub struct UnaryExpr {
     pub op: lex::Token,
-    pub val: LoxValue
+    pub expr: Box<Expr>
 }
 #[derive(Debug)]
 pub struct VariableExpr;
@@ -107,7 +107,11 @@ impl ExprVisitor<String> for PrintVisitor {
             Expr::Set(SetExpr) => {String::new()},
             Expr::Super(SuperExpr) => {String::new()},
             Expr::This(ThisExpr) => {String::new()},
-            Expr::Unary(UnaryExpr) => {String::new()},
+            Expr::Unary(unary) => {
+                format!("({} {})", 
+                        unary.op.lexeme,
+                        self.visit_expr(&unary.expr))
+            },
             Expr::Variable(VariableExpr) => {String::new()},
             Expr::ParseError => "parse_error".to_string()
         }

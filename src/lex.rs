@@ -375,6 +375,11 @@ impl Scanner {
     }
 }
 
+pub fn gen_tokens<S: Into<String>>(source: S) -> Vec<Token> {
+    let mut scanner = Scanner::new(source.into());
+    scanner.scan_tokens()
+}
+
 mod test {
     use super::{TokenType, Scanner};
 
