@@ -1,5 +1,6 @@
 use super::lex;
 use std::fmt::{self, Display};
+use super::interp::RuntimeError;
 
 #[derive(Debug)]
 pub enum Expr {
