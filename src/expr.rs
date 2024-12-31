@@ -2,6 +2,11 @@ use super::lex;
 use std::fmt::{self, Display};
 use super::interp::RuntimeError;
 
+pub enum Stmt {
+    Expression(Box<Expr>),
+    Print(Box<Expr>)
+}
+
 #[derive(Debug)]
 pub enum Expr {
     Binary(BinaryExpr),

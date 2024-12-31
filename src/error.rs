@@ -1,5 +1,6 @@
 use thiserror::Error;
 use crate::lex::{Token};
+use crate::interp::RuntimeError;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::io::{self} ;
@@ -21,6 +22,12 @@ pub enum ParseError {
     General(Token, String)
 }
 
+impl From<ParseError> for RuntimeError {
+    // TODO: Store more info in ParseError to convert to RuntimeError
+    fn from(_err: ParseError) -> Self {
+        RuntimeError::General("parse error")
+    }
+}
 impl From<io::Error> for SalmonError {
     fn from(error: io::Error) -> Self {
         let m = format!("io error: {}", error);

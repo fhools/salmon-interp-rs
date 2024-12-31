@@ -12,7 +12,7 @@ pub(crate) struct Parser {
 
 impl Parser {
 
-    fn new(tokens: &Vec<Token>) -> Self {
+    pub fn new(tokens: &Vec<Token>) -> Self {
         Parser {
             tokens: tokens.clone(),
             current: 0
@@ -69,12 +69,15 @@ impl Parser {
             self.advance();
             Ok(())
         } else {
+            eprintln!("consume err: {}", expected_str);
             Err(ParseError::General(self.peek().clone(), expected_str.to_string()))
         }
     }
 
-    fn parse(&mut self) -> Result<Box<Expr>, ParseError> {
-       let expr = self.expression();
+
+    // converts an Expr into a Result<Box<Expr>, ParseError> by 
+    // checking the expr for any ParseError nodes
+    fn check_parse_error(&self, expr: Expr) -> Result<Box<Expr>, ParseError> {
        let mut errorVisitor = ErrorVisitor::new();
        errorVisitor.visit_expr(&expr);
        if errorVisitor.has_error_node() {
@@ -83,14 +86,46 @@ impl Parser {
            println!("err print: {}", err_print);
            Err(ParseError::General(self.previous().clone(), format!("err ast: {}", err_print)))
        } else {
-           Ok(expr)
+           Ok(Box::new(expr))
        }
+    }
+
+    fn parse_program(&mut self) -> Vec<Stmt> {
+        let mut stmts = Vec::new();
+        while !self.is_at_end() {
+            stmts.push(self.statement());
+        }
+        stmts
+    }
+
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let stmts = self.parse_program();
+        Ok(stmts)
+    }
+
+    fn statement(&mut self) -> Stmt {
+        if self.match_any_of(&[LoxToken![Print]]) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Stmt {
+        let expr = self.expression(); 
+        self.consume(&TokenType::Semicolon, "expect semicolon after print statement");
+        Stmt::Print(expr)
+    }
+    
+    fn expression_statement(&mut self) -> Stmt {
+        let expr = self.expression();
+        self.consume(&TokenType::Semicolon, "expect semicolon after expression statement");
+        Stmt::Expression(expr)
     }
 
     // expression := equality
     fn expression(&mut self) -> Box<Expr> {
         self.equality()
-
     }
 
     // equality := comparison ( ( "!=" | "==" ) comparison )*
@@ -219,8 +254,10 @@ impl Parser {
 
 pub fn do_expr(source: impl Into<String>) -> Result<Box<Expr>, ParseError> {
     let mut parser = Parser::new(&gen_tokens(source.into().as_str()));
-    parser.parse()
+    let expr = parser.expression();
+    parser.check_parse_error(*expr)
 }
+
 mod test {
 
     use super::super::lex::{Scanner, TokenType, gen_tokens};
@@ -256,8 +293,7 @@ mod test {
 
     #[test]
     fn test_parser_parse() {
-        let mut parser = Parser::new(&gen_tokens("1+2"));
-        let expr = parser.parse();
+        let expr = do_expr("1+2"); 
         if expr.is_ok() {
             let print_output  = expr.as_ref().map(|e| {
                 let mut print_visitor = PrintVisitor{};
@@ -270,8 +306,7 @@ mod test {
 
     #[test]
     fn test_parser_parse_bad() {
-        let mut parser = Parser::new(&gen_tokens("1+"));
-        let expr = parser.parse();
+        let expr = do_expr("1+");
         if expr.is_ok() {
             let print_output  = expr.as_ref().map(|e| {
                 let mut print_visitor = PrintVisitor{};

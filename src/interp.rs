@@ -12,6 +12,34 @@ impl Interpreter {
     fn evaluate(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         self.visit_expr(expr)
     }
+
+    fn interpret(&mut self, statements: &Vec<Stmt>) -> Result<(), RuntimeError> {
+        for stmt in statements {
+            let result =  self.execute(stmt)?;
+        }
+        Ok(())
+    }
+
+    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
+       match stmt {
+           Stmt::Expression(expr) => {
+                self.evaluate(expr).map_or_else(|e| Err(e), |v| Ok(()))
+           },
+           Stmt::Print(expr) => {
+               let loxval = self.evaluate(expr);
+               match loxval {
+                   Ok(loxval) => {
+                       println!("{}", loxval.to_string());
+                       Ok(())
+                   },
+                   Err(err) => {
+                       println!("runtime error: {:?}", err);
+                       Err(err)
+                   }
+               }
+           }
+       }
+    }
 }
 
 fn to_op_fn(op_tok: TokenType) -> Box<dyn Fn(&LoxValue, &LoxValue) -> Result<LoxValue, RuntimeError>> {
@@ -72,7 +100,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 let op_fn = to_op_fn(b.op.token_type.clone());
                 let lvalue = self.visit_expr(&b.left);
                 let rvalue = self.visit_expr(&b.right);
-                eprintln!("visit_expr binary: {:?}, {:?}", lvalue, rvalue);
+                //eprintln!("visit_expr binary: {:?}, {:?}", lvalue, rvalue);
                 match (lvalue, rvalue) {
                     (Ok(ref lv), Ok(ref rv)) => {
                         op_fn(lv, rv)
@@ -85,7 +113,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
             },
             Expr::Unary(UnaryExpr{ op: op, ref expr }) => {
                 let loxval = self.visit_expr(expr);
-                eprintln!("visit_expr unary op: {:?} inner expr: {:?}", op, loxval);
+                //eprintln!("visit_expr unary op: {:?} inner expr: {:?}", op, loxval);
                 match (&op.token_type, loxval) {
                     (TokenType::Minus, Ok(LoxValue::Number(value))) => {
                         Ok(LoxValue::Number(-value))
@@ -115,8 +143,20 @@ fn evaluate_expr(expr: &Expr) -> LoxValue {
 }
 mod test {
     use super::*;
-    use super::super::parser::do_expr;
+    use super::super::parser::{Parser, do_expr};
+    use super::super::lex::gen_tokens;
 
+    struct DoIt {
+    }
+
+    impl DoIt {
+        fn interpret(&mut self, source: &str) -> Result<(), RuntimeError> {
+            let mut parser = Parser::new(&gen_tokens(source));
+            let stmts = parser.parse()?;
+            let mut interpreter = Interpreter{};
+            interpreter.interpret(&stmts)
+        }
+    }
     #[test]
     fn test_evaluate_expr() {
         let expr_val = do_expr("1+2+3")
@@ -163,5 +203,15 @@ mod test {
             })
         .unwrap_or(102.0);
         eprintln!("evaluated expr to: {}", expr_val);
+    }
+
+    #[test]
+    fn test_intepreter() {
+        let mut do_interpreter = DoIt{};
+        do_interpreter.interpret(
+            r"print 1 + 2;
+              print 4 + 6;
+              print 10 + 5;
+              ");
     }
 }
