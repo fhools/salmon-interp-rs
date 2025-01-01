@@ -2,22 +2,53 @@ use crate::expr::*;
 use std::collections::HashMap;
 use crate::lex::TokenType;
 pub struct Interpreter {
-    pub top_level_env: Box<Environment>
+    pub environment: Environment
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Environment {
     pub enclosing_env: Option<Box<Environment>>,
     pub values: HashMap<String, LoxValue>,
 }
 
 impl Environment {
+    fn with_enclosing(enclosing_env: Environment) -> Self {
+        Environment {
+            enclosing_env: Some(Box::new(enclosing_env)),
+            ..Environment::default()
+        }
+        
+    }
     fn get(&self, source: impl AsRef<str>) -> Result<LoxValue, RuntimeError> {
         let source: &str  = source.as_ref();
-        self.values.get(source)
-            .map_or_else(||  {
-                Err(RuntimeError::General(Box::leak(format!("unknown variable {}", source).into_boxed_str())))
-            }, |val| Ok(val.to_owned()))
+
+        // which one is better method 1 using nested chains
+        // i kind of dislike the way map_or_else or map_or take the error/default value as first
+        // parameter, and success value as second
+
+        //self.values.get(source)
+        //    .map_or_else(||  {
+        //        self.enclosing_env.as_ref()
+        //            .map_or_else(|| {
+        //                Err(RuntimeError::General(Box::leak(format!("undefined variable {}", source).into_boxed_str())))
+        //            },
+        //            |enclosing|
+        //            enclosing.get(source)
+        //        )
+        //    }, 
+        //    |val| Ok(val.to_owned()))
+ 
+
+        // or this one using early return?
+        if let Some(value) =  self.values.get(source) {
+            return Ok(value.clone());
+        }
+
+        if let Some(ref enclosing) = self.enclosing_env {
+            return enclosing.get(source);
+        }
+        Err(RuntimeError::General(Box::leak(format!("undefined variable {}", source).into_boxed_str())))
+
     }
 
     fn set(&mut self, name: impl AsRef<str>, value: LoxValue) -> Result<(), RuntimeError> {
@@ -34,7 +65,7 @@ pub enum RuntimeError {
 impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
-            top_level_env: Box::new(Environment::default()),
+            environment: Environment::default(),
         }
     }
 
@@ -81,11 +112,33 @@ impl Interpreter {
                    .transpose()?
                    // unwrap will return LoxValue or nil if Option None
                    .unwrap_or(LoxValue::Nil);
-                eprintln!("declaring var: {}", name);
-                self.top_level_env.set(name, lox_value);
+                eprintln!("declaring var: {} value: {}", name, lox_value.to_string());
+                self.environment.set(name, lox_value);
                 Ok(())   
            },
+           Stmt::Block(ref block) => {
+               self.execute_block(&block.statements, Environment::with_enclosing(self.environment.clone()))
+           },
        }
+
+    }
+
+    fn execute_block(&mut self, stmts: &Vec<Stmt>, env: Environment) -> Result<(), RuntimeError> {
+        // save off Interpreters prior environment
+        let previous = self.environment.clone();
+
+        // set the blocks environment
+        self.environment = env;
+        let mut result = Ok(());
+        for s in stmts {
+            result = self.execute(s);
+            if result.is_err() {
+                break;
+            }
+        }
+        // restore the prior environment
+        self.environment = previous;
+        result
     }
 }
 
@@ -177,28 +230,29 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 }
             },
             Expr::Variable(VariableExpr{ ref name }) => {
-                self.top_level_env.get(&name.lexeme)
+                self.environment.get(&name.lexeme)
                     .map_err(|_err| {
                     eprintln!("unfound variable: {}",name);
                     RuntimeError::General(Box::leak(format!("undefined variable: {}",name).into_boxed_str()))
                     })
             },
             Expr::Assign(ref assign_expr) => {
-                if self.top_level_env.get(&assign_expr.name.lexeme).is_ok() {
+                if self.environment.get(&assign_expr.name.lexeme).is_ok() {
                     self.evaluate(&assign_expr.value)
                         .and_then(|val| {
                             eprintln!("assign var {} = {:?}", assign_expr.name.lexeme, val);
-                            self.top_level_env.set(&assign_expr.name.lexeme, val.clone())?;
+                            self.environment.set(&assign_expr.name.lexeme, val.clone())?;
                             Ok(val)
                         })
                     .map_err(|_err| {
-                            eprintln!("unable to get assignment expression");
-                            RuntimeError::General(Box::leak(format!("unable to assign: {}",assign_expr.name.lexeme).into_boxed_str()))})
+                            eprintln!("undefined variable for assignment");
+                            RuntimeError::General(Box::leak(format!("undefined variable for assignment: {}",assign_expr.name.lexeme).into_boxed_str()))})
 
                 } else {
-                    self.top_level_env.get(&assign_expr.name.lexeme)
+                    self.environment.get(&assign_expr.name.lexeme)
                 }
-            }
+            },
+
             a @ _ => {
                 eprintln!("unhandled expr: {:?}", a);
                 Err(RuntimeError::General("unhandled expr"))
@@ -300,7 +354,24 @@ mod test {
               var c;
               print b;
               c = 100 + b;
+              10 + 40;
               print c;
+              ");
+    }
+
+    #[test]
+    fn test_lexical_scope() {
+        let mut do_interpreter = DoIt{};
+        // TODO: change the Interpreter allow option output capture to endpoint instead
+        // of just output to stdout. so that the unit test can capture the output
+        do_interpreter.interpret(
+            r"var a = 10;
+              print a;
+              {
+                var a = 20;
+                print a;
+              }
+              print a;
               ");
     }
 }

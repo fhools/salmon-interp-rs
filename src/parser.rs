@@ -45,6 +45,7 @@ impl Parser {
         false
     }
 
+    // peek check to see if next token is tok_type
     fn check(&mut self, tok_type: &TokenType) -> bool {
         if self.is_at_end() {
             return false;
@@ -154,12 +155,25 @@ impl Parser {
 
     // statement := "print" expression_statement
     //             | expression_statement
+    //             | block 
     fn statement(&mut self) -> Stmt {
         if self.match_any_of(&[LoxToken![Print]]) {
             self.print_statement()
+        } else if self.match_any_of(&[LoxToken![LeftBrace]]) {
+            self.block()
         } else {
             self.expression_statement()
         }
+    }
+
+    // block := "{" declaration * "}"
+    fn block(&mut self) -> Stmt {
+        let mut statements = Vec::new();
+        while !self.check(&LoxToken![RightBrace]) && !self.is_at_end() {
+            statements.push(self.declaration())
+        }
+        self.consume(&LoxToken![RightBrace], "expected right brace closing block");
+        Stmt::Block(Block{ statements })
     }
 
     // print_statement := expression ';'
@@ -185,34 +199,37 @@ impl Parser {
         self.assignment()
     }
 
-    // IDENTIFIER but really a VariableExpr
+    // IDENTIFIER but really goes parsed as only VariableExpr i.e. lvalue
     // assignment := IDENTIFIER = assignment
     //              | equality
     fn assignment(&mut self) -> Box<Expr> {
-        // This is an interesting algorith in the book.
+        // The implementation of this from the book is notable for the following reasons: 
         // We try to parse an expression
         // We then check to see if the next token is = , and if it is then we
         // verify whether the expression we parsed earlier is a VariableExpr
         // if it is then we recursivel parse assignment again
         // if it is not then we have an error we can't assign to non variable expression
+        // if the VariableExpr was not followed by a equal sign then it must be just 
+        // expression by itself
 
         // this could be a var 
-        let left_side_expr = self.equality();
+        let variable_expr_or_equality = self.equality();
 
         if self.match_any_of(&[LoxToken![Equal]]) {
-            let equals_tok = self.previous();
+            let equals_tok = self.previous().clone();
             let value = self.assignment();
-            match *left_side_expr {
+            match *variable_expr_or_equality {
                 Expr::Variable(var) => {
                     Box::new(Expr::Assign(AssignExpr{name: var.name, value}))
                 },
                 _ => {
                     eprintln!("invalid lvalue for var assignment");
+                    self.error(&equals_tok, "invalid lvalue for var assignment");
                     Box::new(Expr::ParseError)
                 }
             }
         } else {
-            left_side_expr
+            variable_expr_or_equality
         }
     }
 
@@ -276,7 +293,9 @@ impl Parser {
         }
     }
 
-    // primary := NUMBER | STRING | "true" | "false" | "nil"
+    // primary := NUMBER | STRING | "true" | "false" | "nil" 
+    //           | identifier 
+    //           | '(' expression ')'
     fn primary(&mut self) -> Box<Expr> {
         let num_tok = TokenType::Number(0.0);
         let str_tok = TokenType::String(String::new());
@@ -315,7 +334,7 @@ impl Parser {
         }
     }
 
-    fn error(&mut self, tok: &Token, msg: impl Into<String>) {
+    fn error(&self, tok: &Token, msg: impl Into<String>) {
         let m = format!("parse error on token type: {:?} msg: {}", tok.token_type, msg.into());
         salmon_error(tok.line, m.as_str());
     }

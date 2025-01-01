@@ -2,22 +2,25 @@ use super::lex;
 use std::fmt::{self, Display};
 use super::interp::RuntimeError;
 
+#[derive(Debug)]
 pub enum Stmt {
     Expression(Box<Expr>),
     Print(Box<Expr>),
     VarDecl(VarDecl),
+    Block(Block),
 }
 
 pub trait StmtVisitor<R> {
-    fn visit_expr(&mut self, stmt: &Stmt) -> R;
+    fn visit_stmt(&mut self, stmt: &Stmt) -> R;
 }
 
-impl StmtVisitor<String> for Stmt {
-    fn visit_expr(&mut self, stmt: &Stmt) -> String {
+pub struct PrintVisitor;
+impl StmtVisitor<String> for PrintVisitor {
+    fn visit_stmt(&mut self, stmt: &Stmt) -> String {
         let mut print_visitor = PrintVisitor;
         match stmt {
-            Stmt::Expression(expr) => {
-               print_visitor.visit_expr(expr)
+            Stmt::Expression(ref expr) => {
+               print_visitor.visit_expr(&*expr)
             },
             Stmt::Print(expr) => {
                 format!("(print {})", print_visitor.visit_expr(expr))
@@ -28,10 +31,25 @@ impl StmtVisitor<String> for Stmt {
                         .as_ref()
                         .map_or("null".to_string(), |expr| print_visitor.visit_expr(expr)))
             },
+            Stmt::Block(block) => {
+                let mut output;
+                output = format!("{{");
+                for (i, v) in block.statements.iter().enumerate() {
+                    if i > 0 {
+                        output = format!("{},", output);
+                    }
+                    output += &format!("{}", self.visit_stmt(v));
+                }
+                output
+            }
         }
     }
 }
 
+#[derive(Debug)]
+pub struct Block {
+    pub statements: Vec<Stmt> 
+}
 #[derive(Debug)]
 pub struct VarDecl {
     pub name: lex::Token,
@@ -129,7 +147,6 @@ pub trait ExprVisitor<R> {
     fn visit_expr(&mut self, expr: &Expr) -> R;
 }
 
-pub struct PrintVisitor;
 impl ExprVisitor<String> for PrintVisitor {
     fn visit_expr(&mut self, expr: &Expr) -> String {
         match expr {
