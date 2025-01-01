@@ -152,7 +152,7 @@ impl Parser {
         var_decl_stmt
     }
 
-    // statement := print_statement
+    // statement := "print" expression_statement
     //             | expression_statement
     fn statement(&mut self) -> Stmt {
         if self.match_any_of(&[LoxToken![Print]]) {
@@ -162,6 +162,7 @@ impl Parser {
         }
     }
 
+    // print_statement := expression ';'
     fn print_statement(&mut self) -> Stmt {
         let expr = self.expression(); 
         if self.consume(&TokenType::Semicolon, "expect semicolon after print statement").is_err() {
@@ -170,6 +171,7 @@ impl Parser {
         Stmt::Print(expr)
     }
     
+    // expression_statement := expression ";"
     fn expression_statement(&mut self) -> Stmt {
         let expr = self.expression();
         if self.consume(&TokenType::Semicolon, "expect semicolon after expression statement").is_err() {
@@ -178,9 +180,40 @@ impl Parser {
         Stmt::Expression(expr)
     }
 
-    // expression := equality
+    // expression := assignment ";"
     fn expression(&mut self) -> Box<Expr> {
-        self.equality()
+        self.assignment()
+    }
+
+    // IDENTIFIER but really a VariableExpr
+    // assignment := IDENTIFIER = assignment
+    //              | equality
+    fn assignment(&mut self) -> Box<Expr> {
+        // This is an interesting algorith in the book.
+        // We try to parse an expression
+        // We then check to see if the next token is = , and if it is then we
+        // verify whether the expression we parsed earlier is a VariableExpr
+        // if it is then we recursivel parse assignment again
+        // if it is not then we have an error we can't assign to non variable expression
+
+        // this could be a var 
+        let left_side_expr = self.equality();
+
+        if self.match_any_of(&[LoxToken![Equal]]) {
+            let equals_tok = self.previous();
+            let value = self.assignment();
+            match *left_side_expr {
+                Expr::Variable(var) => {
+                    Box::new(Expr::Assign(AssignExpr{name: var.name, value}))
+                },
+                _ => {
+                    eprintln!("invalid lvalue for var assignment");
+                    Box::new(Expr::ParseError)
+                }
+            }
+        } else {
+            left_side_expr
+        }
     }
 
     // equality := comparison ( ( "!=" | "==" ) comparison )*

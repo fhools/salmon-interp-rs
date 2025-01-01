@@ -81,7 +81,7 @@ impl Interpreter {
                    .transpose()?
                    // unwrap will return LoxValue or nil if Option None
                    .unwrap_or(LoxValue::Nil);
-                eprintln!("setting var: {}", name);
+                eprintln!("declaring var: {}", name);
                 self.top_level_env.set(name, lox_value);
                 Ok(())   
            },
@@ -182,6 +182,22 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                     eprintln!("unfound variable: {}",name);
                     RuntimeError::General(Box::leak(format!("undefined variable: {}",name).into_boxed_str()))
                     })
+            },
+            Expr::Assign(ref assign_expr) => {
+                if self.top_level_env.get(&assign_expr.name.lexeme).is_ok() {
+                    self.evaluate(&assign_expr.value)
+                        .and_then(|val| {
+                            eprintln!("assign var {} = {:?}", assign_expr.name.lexeme, val);
+                            self.top_level_env.set(&assign_expr.name.lexeme, val.clone())?;
+                            Ok(val)
+                        })
+                    .map_err(|_err| {
+                            eprintln!("unable to get assignment expression");
+                            RuntimeError::General(Box::leak(format!("unable to assign: {}",assign_expr.name.lexeme).into_boxed_str()))})
+
+                } else {
+                    self.top_level_env.get(&assign_expr.name.lexeme)
+                }
             }
             a @ _ => {
                 eprintln!("unhandled expr: {:?}", a);
@@ -283,6 +299,7 @@ mod test {
               var b = a + 12;
               var c;
               print b;
+              c = 100 + b;
               print c;
               ");
     }

@@ -27,7 +27,7 @@ impl StmtVisitor<String> for Stmt {
                         var_decl.initializer
                         .as_ref()
                         .map_or("null".to_string(), |expr| print_visitor.visit_expr(expr)))
-            }
+            },
         }
     }
 }
@@ -51,6 +51,7 @@ pub enum Expr {
     This(ThisExpr),
     Unary(UnaryExpr),
     Variable(VariableExpr),
+    Assign(AssignExpr),
     ParseError
 }
 
@@ -82,8 +83,8 @@ impl Display for Expr {
 
 #[derive(Debug)]
 pub struct AssignExpr {
-    name: lex::Token,
-    value: Box<Expr>,
+    pub name: lex::Token,
+    pub value: Box<Expr>,
 }
 
 #[derive(Debug)]
@@ -155,6 +156,9 @@ impl ExprVisitor<String> for PrintVisitor {
                 // TODO: look up variable in environment and visit the expression value
                 format!("{}", var_expr.name.lexeme)
             },
+            Expr::Assign(assign_expr) => {
+                format!("(assign {} {})", assign_expr.name.lexeme, self.visit_expr(&assign_expr.value))
+            },
             Expr::ParseError => "parse_error".to_string()
         }
 
@@ -185,6 +189,7 @@ impl ExprVisitor<()> for ErrorVisitor {
             Expr::This(ThisExpr) => {},
             Expr::Unary(_unary) => {},
             Expr::Variable(VariableExpr) => {},
+            Expr::Assign(_) => {},
             Expr::ParseError =>  {
                 self.has_error = true;
             }
