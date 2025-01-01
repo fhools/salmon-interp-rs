@@ -10,13 +10,13 @@ pub static ERROR_MGR: LazyLock<Mutex<Option<ErrorManager>>> = LazyLock::new(|| {
 pub struct ErrorManager {
     
 }
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum SalmonError {
     #[error("SalmonError: error: {0}")] 
     General(String),
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum ParseError {
     #[error("GeneralError: token: {0} msg: {1}")]
     General(Token, String)

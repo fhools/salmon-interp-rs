@@ -1,6 +1,29 @@
 use crate::expr::*;
+use std::collections::HashMap;
 use crate::lex::TokenType;
 pub struct Interpreter {
+    pub top_level_env: Box<Environment>
+}
+
+#[derive(Default, Debug)]
+pub struct Environment {
+    pub enclosing_env: Option<Box<Environment>>,
+    pub values: HashMap<String, LoxValue>,
+}
+
+impl Environment {
+    fn get(&self, source: impl AsRef<str>) -> Result<LoxValue, RuntimeError> {
+        let source: &str  = source.as_ref();
+        self.values.get(source)
+            .map_or_else(||  {
+                Err(RuntimeError::General(Box::leak(format!("unknown variable {}", source).into_boxed_str())))
+            }, |val| Ok(val.to_owned()))
+    }
+
+    fn set(&mut self, name: impl AsRef<str>, value: LoxValue) -> Result<(), RuntimeError> {
+        self.values.insert(name.as_ref().to_owned(), value);
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -9,11 +32,17 @@ pub enum RuntimeError {
 }
 
 impl Interpreter {
+    pub fn new() -> Self {
+        Interpreter {
+            top_level_env: Box::new(Environment::default()),
+        }
+    }
+
     fn evaluate(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         self.visit_expr(expr)
     }
 
-    fn interpret(&mut self, statements: &Vec<Stmt>) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, statements: &Vec<Stmt>) -> Result<(), RuntimeError> {
         for stmt in statements {
             let result =  self.execute(stmt)?;
         }
@@ -38,6 +67,24 @@ impl Interpreter {
                    }
                }
            }
+           Stmt::VarDecl(var_decl) => {
+               let name = var_decl.name.lexeme.clone();
+               // TODO: this is masking RuntimeError, what if the visit_expr fails return  valuue
+               // that should bea runtime error instead of LoxNil
+               let lox_value = var_decl
+                   .initializer
+                   .as_ref()
+                   // if initializer is None then unwrap_or will return LoxValue nil
+                   // otherwise map returns Option<Result<LoxValue...>>
+                   .map(|expr| self.visit_expr(expr))
+                   // ? returns Err of Result
+                   .transpose()?
+                   // unwrap will return LoxValue or nil if Option None
+                   .unwrap_or(LoxValue::Nil);
+                eprintln!("setting var: {}", name);
+                self.top_level_env.set(name, lox_value);
+                Ok(())   
+           },
        }
     }
 }
@@ -78,6 +125,9 @@ fn to_op_fn(op_tok: TokenType) -> Box<dyn Fn(&LoxValue, &LoxValue) -> Result<Lox
             (TokenType::Slash, _, _) => {
                 Err(RuntimeError::General("/ operands must be both numbers"))
             },
+
+            // TODO: handle logical comparison expressions! <=, >= , == , != , < , > 
+            //
             _ => {
                 Err(RuntimeError::General("binary expression unknown operator")) 
             }
@@ -125,8 +175,16 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                         Err(RuntimeError::General("unary error"))
                     }
                 }
+            },
+            Expr::Variable(VariableExpr{ ref name }) => {
+                self.top_level_env.get(&name.lexeme)
+                    .map_err(|_err| {
+                    eprintln!("unfound variable: {}",name);
+                    RuntimeError::General(Box::leak(format!("undefined variable: {}",name).into_boxed_str()))
+                    })
             }
-            _ => {
+            a @ _ => {
+                eprintln!("unhandled expr: {:?}", a);
                 Err(RuntimeError::General("unhandled expr"))
             }
         }
@@ -134,7 +192,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
 }
 
 fn evaluate_expr(expr: &Expr) -> LoxValue {
-    let mut interpreter = Interpreter{};
+    let mut interpreter = Interpreter::new();
     interpreter.evaluate(expr).unwrap_or_else(|RuntimeError::General(s)| {
         eprintln!("runtime error to evaluate: \"{}\" : {}", expr, s);
         LoxValue::Nil
@@ -153,7 +211,7 @@ mod test {
         fn interpret(&mut self, source: &str) -> Result<(), RuntimeError> {
             let mut parser = Parser::new(&gen_tokens(source));
             let stmts = parser.parse()?;
-            let mut interpreter = Interpreter{};
+            let mut interpreter = Interpreter::new();
             interpreter.interpret(&stmts)
         }
     }
@@ -212,6 +270,20 @@ mod test {
             r"print 1 + 2;
               print 4 + 6;
               print 10 + 5;
+              ");
+    }
+
+    #[test]
+    fn test_var_decl() {
+        let mut do_interpreter = DoIt{};
+        // TODO: change the Interpreter allow option output capture to endpoint instead
+        // of just output to stdout. so that the unit test can capture the output
+        do_interpreter.interpret(
+            r"var a = 10;
+              var b = a + 12;
+              var c;
+              print b;
+              print c;
               ");
     }
 }

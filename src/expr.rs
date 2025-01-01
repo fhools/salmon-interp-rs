@@ -4,7 +4,38 @@ use super::interp::RuntimeError;
 
 pub enum Stmt {
     Expression(Box<Expr>),
-    Print(Box<Expr>)
+    Print(Box<Expr>),
+    VarDecl(VarDecl),
+}
+
+pub trait StmtVisitor<R> {
+    fn visit_expr(&mut self, stmt: &Stmt) -> R;
+}
+
+impl StmtVisitor<String> for Stmt {
+    fn visit_expr(&mut self, stmt: &Stmt) -> String {
+        let mut print_visitor = PrintVisitor;
+        match stmt {
+            Stmt::Expression(expr) => {
+               print_visitor.visit_expr(expr)
+            },
+            Stmt::Print(expr) => {
+                format!("(print {})", print_visitor.visit_expr(expr))
+            },
+            Stmt::VarDecl(var_decl) =>  {
+                format!("(var_decl {} {})", var_decl.name.lexeme, 
+                        var_decl.initializer
+                        .as_ref()
+                        .map_or("null".to_string(), |expr| print_visitor.visit_expr(expr)))
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct VarDecl {
+    pub name: lex::Token,
+    pub initializer: Option<Box<Expr>>
 }
 
 #[derive(Debug)]
@@ -89,7 +120,9 @@ pub struct UnaryExpr {
     pub expr: Box<Expr>
 }
 #[derive(Debug)]
-pub struct VariableExpr;
+pub struct VariableExpr {
+    pub name: lex::Token
+}
 
 pub trait ExprVisitor<R> {
     fn visit_expr(&mut self, expr: &Expr) -> R;
@@ -118,7 +151,10 @@ impl ExprVisitor<String> for PrintVisitor {
                         unary.op.lexeme,
                         self.visit_expr(&unary.expr))
             },
-            Expr::Variable(VariableExpr) => {String::new()},
+            Expr::Variable(var_expr) => {
+                // TODO: look up variable in environment and visit the expression value
+                format!("{}", var_expr.name.lexeme)
+            },
             Expr::ParseError => "parse_error".to_string()
         }
 

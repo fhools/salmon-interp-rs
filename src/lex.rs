@@ -105,6 +105,14 @@ impl Token {
         }
     }
 
+    pub fn new_dummy_identifier(line: usize) -> Self {
+        Token {
+            token_type: TokenType::Identifier("dummy_var".to_string()),
+            lexeme: "dummy_var".to_string(),
+            line
+        }
+    }
+
 }
 
 impl fmt::Display for Token {

@@ -7,7 +7,10 @@ pub(crate) struct Parser {
     tokens: Vec<Token>,
 
     // index into tokens vector
-    current: usize
+    current: usize,
+
+    // error synchronization flag
+    need_sync: bool,
 }
 
 impl Parser {
@@ -15,7 +18,8 @@ impl Parser {
     pub fn new(tokens: &Vec<Token>) -> Self {
         Parser {
             tokens: tokens.clone(),
-            current: 0
+            current: 0,
+            need_sync: false
         }
     }
 
@@ -65,10 +69,9 @@ impl Parser {
         &self.tokens[self.current]
     }
 
-    fn consume(&mut self, tok_type: &TokenType, expected_str: &'static str) -> Result<(), ParseError> {
+    fn consume(&mut self, tok_type: &TokenType, expected_str: &'static str) -> Result<&Token, ParseError> {
         if self.check(tok_type) {
-            self.advance();
-            Ok(())
+            Ok(self.advance())
         } else {
             eprintln!("consume err: {}", expected_str);
             Err(ParseError::General(self.peek().clone(), expected_str.to_string()))
@@ -91,19 +94,66 @@ impl Parser {
        }
     }
 
-    fn parse_program(&mut self) -> Vec<Stmt> {
-        let mut stmts = Vec::new();
-        while !self.is_at_end() {
-            stmts.push(self.statement());
-        }
-        stmts
-    }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let stmts = self.parse_program();
         Ok(stmts)
     }
 
+    // program := declaration* EOF
+    fn parse_program(&mut self) -> Vec<Stmt> {
+        let mut stmts = Vec::new();
+        while !self.is_at_end() {
+            stmts.push(self.declaration());
+        }
+        stmts
+    }
+
+
+    // delaration := vardecl 
+    //              | statement 
+    fn declaration(&mut self) -> Stmt {
+        let stmt;
+        if self.match_any_of(&[LoxToken![Var]]) {
+            stmt = self.var_declaration();
+            if self.need_sync {
+                self.synchronize();
+            }
+        } else {
+            stmt = self.statement();
+            if self.need_sync {
+                self.synchronize();
+            }
+        }
+        stmt
+    }
+   
+    // var_declaration := VAR "=" expression
+    
+    fn var_declaration(&mut self) -> Stmt {
+        // TODO: Note this is a kludge, consume's check of Identifier does not check the value of identifier so it
+        // works
+        let name = match self.consume(&LoxToken![Identifier("".to_string())], "expected identifier after var") {
+            Ok(token) => {
+                token.to_owned()
+            },
+            Err(_) => {
+                Token::new_dummy_identifier(self.previous().line)
+            }
+        };
+        let var_decl_stmt = if self.match_any_of(&[LoxToken![Equal]])  {
+            Stmt::VarDecl(VarDecl{name, initializer: Some(self.expression())})
+        } else {
+            Stmt::VarDecl(VarDecl{name, initializer: None})
+        };
+        if self.consume(&LoxToken![Semicolon], "expected ';' at the end of var decl").is_err() {
+            self.set_need_sync();
+        };
+        var_decl_stmt
+    }
+
+    // statement := print_statement
+    //             | expression_statement
     fn statement(&mut self) -> Stmt {
         if self.match_any_of(&[LoxToken![Print]]) {
             self.print_statement()
@@ -114,13 +164,17 @@ impl Parser {
 
     fn print_statement(&mut self) -> Stmt {
         let expr = self.expression(); 
-        self.consume(&TokenType::Semicolon, "expect semicolon after print statement");
+        if self.consume(&TokenType::Semicolon, "expect semicolon after print statement").is_err() {
+            self.set_need_sync();
+        }
         Stmt::Print(expr)
     }
     
     fn expression_statement(&mut self) -> Stmt {
         let expr = self.expression();
-        self.consume(&TokenType::Semicolon, "expect semicolon after expression statement");
+        if self.consume(&TokenType::Semicolon, "expect semicolon after expression statement").is_err() {
+            self.set_need_sync();
+        } 
         Stmt::Expression(expr)
     }
 
@@ -208,6 +262,8 @@ impl Parser {
                     _ => { Expr::ParseError }
             };
             Box::new(expr)
+        } else if self.match_any_of(&[LoxToken![Identifier("".to_string())]]) {
+            Box::new(Expr::Variable(VariableExpr{name:self.previous().clone()}))
         } else if self.match_any_of(&[LoxToken![LeftParen]]) {
             let expr = self.expression();
             let result = self.consume(&LoxToken![RightParen], "expected ')' after expression");
@@ -236,6 +292,7 @@ impl Parser {
         self.advance();
         while !self.is_at_end() {
             if self.previous().token_type == TokenType::Semicolon {
+                self.need_sync = false;
                 return;
             }
             // sychronization points
@@ -243,12 +300,23 @@ impl Parser {
                 TokenType::Class | TokenType::For | TokenType::Fun |
                 TokenType::If | TokenType::Print | TokenType::Return |
                 TokenType::Var | TokenType::While => 
-                { return; },
+                { 
+                    self.need_sync = false;
+                    return;
+                },
                 _ => {}
             }
             // keep consuming tokens 
             self.advance();
         }
+    }
+
+    fn set_need_sync(&mut self) {
+        self.need_sync = true;
+    }
+
+    fn clear_need_sync(&mut self) {
+        self.need_sync = false;
     }
 
 }
