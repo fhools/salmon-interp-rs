@@ -1,8 +1,10 @@
 use crate::expr::*;
 use std::collections::HashMap;
+use std::io::{self, Write};
 use crate::lex::TokenType;
-pub struct Interpreter {
-    pub environment: Environment
+pub struct Interpreter<W: Write> {
+    pub environment: Environment,
+    out: W
 }
 
 #[derive(Default, Debug, Clone)]
@@ -61,11 +63,20 @@ impl Environment {
 pub enum RuntimeError {
         General(&'static str)
 }
-
-impl Interpreter {
+impl Interpreter<std::io::Stdout>  {
     pub fn new() -> Self {
         Interpreter {
             environment: Environment::default(),
+            out: std::io::stdout()
+        }
+    }
+}
+impl<W: Write> Interpreter<W> {
+
+    pub fn new_with_out(out_stream: W) -> Self {
+        Interpreter {
+                environment: Environment::default(),
+                out: out_stream
         }
     }
 
@@ -80,6 +91,10 @@ impl Interpreter {
         Ok(())
     }
 
+    fn print_statement_output(&mut self, msg: &str) -> io::Result<()> {
+        writeln!(self.out, "{}", msg)
+    }
+
     fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
        match stmt {
            Stmt::Expression(expr) => {
@@ -89,7 +104,7 @@ impl Interpreter {
                let loxval = self.evaluate(expr);
                match loxval {
                    Ok(loxval) => {
-                       println!("{}", loxval.to_string());
+                       self.print_statement_output(loxval.to_string().as_ref());
                        Ok(())
                    },
                    Err(err) => {
@@ -196,7 +211,7 @@ fn is_truthy(loxval: &LoxValue) -> bool {
     }
 }
 
-impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
+impl<W: Write> ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter<W> {
     fn visit_expr(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         match expr {
             Expr::Binary(b) => {
@@ -284,6 +299,15 @@ mod test {
             let mut interpreter = Interpreter::new();
             interpreter.interpret(&stmts)
         }
+
+        fn interpret_capture_output(&mut self, source: &str) -> Result<String, RuntimeError> {
+            let mut parser = Parser::new(&gen_tokens(source));
+            let stmts = parser.parse()?;
+            let mut buff = Vec::new();
+            let mut interpreter = Interpreter::new_with_out(&mut buff);
+            interpreter.interpret(&stmts);
+            Ok(String::from_utf8_lossy(&buff).to_string())
+        }
     }
     #[test]
     fn test_evaluate_expr() {
@@ -359,11 +383,10 @@ mod test {
               ");
     }
 
+
     #[test]
     fn test_lexical_scope() {
         let mut do_interpreter = DoIt{};
-        // TODO: change the Interpreter allow option output capture to endpoint instead
-        // of just output to stdout. so that the unit test can capture the output
         do_interpreter.interpret(
             r"var a = 10;
               print a;
@@ -373,5 +396,25 @@ mod test {
               }
               print a;
               ");
+    }
+
+
+    #[test]
+    fn test_lexical_scope_out_buff() -> Result<(), RuntimeError> {
+        let mut do_interpreter = DoIt{};
+        do_interpreter.interpret_capture_output(
+            r"var a = 10;
+              print a;
+              {
+                var a = 20;
+                print a;
+              }
+              print a;
+              ")
+            .map(|s| {
+                eprintln!("captured output: {}", s);
+                assert_eq!(s, "10\n20\n10\n");
+                Ok::<(),RuntimeError>(())
+            })?
     }
 }
