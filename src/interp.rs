@@ -111,7 +111,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
             Expr::Literal(lit) => {
                 Ok(lit.val.clone())
             },
-            Expr::Unary(UnaryExpr{ op: op, ref expr }) => {
+            Expr::Unary(UnaryExpr{ op, ref expr }) => {
                 let loxval = self.visit_expr(expr);
                 //eprintln!("visit_expr unary op: {:?} inner expr: {:?}", op, loxval);
                 match (&op.token_type, loxval) {

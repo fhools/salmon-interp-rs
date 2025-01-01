@@ -24,8 +24,8 @@ pub enum ParseError {
 
 impl From<ParseError> for RuntimeError {
     // TODO: Store more info in ParseError to convert to RuntimeError
-    fn from(_err: ParseError) -> Self {
-        RuntimeError::General("parse error")
+    fn from(ParseError::General(_, string): ParseError) -> Self {
+       RuntimeError::General(Box::leak(string.into_boxed_str()) )
     }
 }
 impl From<io::Error> for SalmonError {

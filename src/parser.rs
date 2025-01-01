@@ -30,6 +30,7 @@ impl Parser {
         &self.tokens[self.current-1]
     }
 
+    // matches any of the provided tokens, and advances the cursor
     fn match_any_of(&mut self, candidate_toks: &[TokenType]) -> bool {
         for t in candidate_toks {
             if self.check(t) {
