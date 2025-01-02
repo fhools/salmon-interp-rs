@@ -590,12 +590,35 @@ mod test {
               while (a != 5) {
                  print a;
                  a = a + 1;
-              } 
+              }
+              print a;
               ",
             )
             .map(|s| {
                 eprintln!("captured output: {}", s);
-                assert_eq!(s, "1\n2\n3\n4\n");
+                assert_eq!(s, "1\n2\n3\n4\n5\n");
+                Ok::<(), RuntimeError>(())
+            })?
+    }
+
+    #[test]
+    fn test_for() -> Result<(), RuntimeError> {
+        // test for loop, also test that local for var is shadowed and then destroyed after loop
+        let mut do_interpreter = DoIt {};
+        do_interpreter
+            .interpret_capture_output(
+                r"
+                var a = 10;
+              for (var a = 1; a != 5;) {
+                 print a;
+                 a = a + 1;
+              }
+              print a;
+              ",
+            )
+            .map(|s| {
+                eprintln!("captured output: {}", s);
+                assert_eq!(s, "1\n2\n3\n4\n10\n");
                 Ok::<(), RuntimeError>(())
             })?
     }

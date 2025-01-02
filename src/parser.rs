@@ -155,6 +155,7 @@ impl Parser {
 
     // statement := if_statement 
     //             | while_statement
+    //             | for_statement
     //             | "print" expression_statement
     //             | expression_statement
     //             | block 
@@ -163,6 +164,8 @@ impl Parser {
             self.if_statement()
         } else if self.match_any_of(&[LoxToken![While]]) {
             self.while_statement()
+        } else if self.match_any_of(&[LoxToken![For]]) {
+            self.for_statement()
         } else if self.match_any_of(&[LoxToken![Print]]) {
             self.print_statement()
         } else if self.match_any_of(&[LoxToken![LeftBrace]]) {
@@ -195,6 +198,66 @@ impl Parser {
         while_stmt
     }
 
+    // for_statement := for "(" ( var_decl | expr_stmt | ";" expression? ";" expression? ")"
+    //                  statement
+    fn for_statement(&mut self) -> Stmt {
+        // Some interest stuff about this, var_decl eand expr_stmt both are optional and parsing
+        // those will munch the semicolon
+
+        self.consume(&LoxToken![LeftParen], "expected '(' following 'for'");
+
+        let mut initializer = None;
+
+        // if the next token is a semicolon that means there is no var/expression initializer
+        if self.match_any_of(&[LoxToken![Semicolon]]) {
+            initializer =  None
+        // otherwise if its a var 
+        } else if self.match_any_of(&[LoxToken![Var]]) {
+            initializer = Some(self.var_declaration());
+        // or its an expression, notice we use the expression_statement which will munch the
+        // semilcolon
+        } else  {
+            initializer = Some(self.expression_statement());
+        }
+      
+        // there is an optional condition, if not present its a while(true) equivalent
+        let mut condition = None;
+        if !self.check(&LoxToken![Semicolon]) {
+            condition = Some(self.expression());
+        } else {
+            condition = Some(Box::new(Expr::Literal(LiteralExpr{val: LoxValue::Bool(true)})));
+        }
+        eprintln!("condition: {:?}", condition);
+        self.consume(&LoxToken![Semicolon], "expected ';' after condition for 'for'");
+
+        let mut increment = None;
+        if !self.check(&LoxToken![RightParen]) {
+            increment = Some(self.expression());
+        }
+        // finally munch the closing paren
+        eprintln!("current token: {:?}", self.tokens[self.current]);
+        self.consume(&LoxToken![RightParen], "expected ')' following for clause");
+
+        let mut body = self.statement();
+
+        if let Some(increment) = increment {
+            let body_with_incr = vec![body, Stmt::Expression(increment)];
+            body = Stmt::Block(Block{ statements: body_with_incr }); 
+        }
+
+
+        body = Stmt::While(WhileStmt { condition: condition.unwrap(), body: Box::new(body)});
+    
+        if let Some(initializer) = initializer {
+            eprintln!("initializer: {:?}", initializer);
+            // NOTE: Kind of interesting here the initializer is in it's own block 
+            // and then the body of the for loop is another nested block inside that
+            // is that an ok design?
+            body = Stmt::Block(Block{statements: vec![initializer, body]});
+        }
+        body
+    }
+
     // block := "{" declaration * "}"
     fn block(&mut self) -> Stmt {
         let mut statements = Vec::new();
@@ -223,7 +286,7 @@ impl Parser {
         Stmt::Expression(expr)
     }
 
-    // expression := assignment ";"
+    // expression := assignment 
     fn expression(&mut self) -> Box<Expr> {
         self.assignment()
     }
