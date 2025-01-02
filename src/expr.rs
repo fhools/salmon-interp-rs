@@ -8,6 +8,7 @@ pub enum Stmt {
     Print(Box<Expr>),
     VarDecl(VarDecl),
     Block(Block),
+    If(IfStmt),
 }
 
 pub trait StmtVisitor<R> {
@@ -41,6 +42,13 @@ impl StmtVisitor<String> for PrintVisitor {
                     output += &format!("{}", self.visit_stmt(v));
                 }
                 output
+            },
+            Stmt::If(if_stmt) => {
+                format!("(if {} {} {})",
+                print_visitor.visit_expr(&if_stmt.conditional),
+                print_visitor.visit_stmt(&if_stmt.then_branch),
+                print_visitor.visit_stmt(&if_stmt.then_branch))
+
             }
         }
     }
@@ -54,6 +62,13 @@ pub struct Block {
 pub struct VarDecl {
     pub name: lex::Token,
     pub initializer: Option<Box<Expr>>
+}
+
+#[derive(Debug)]
+pub struct IfStmt {
+    pub conditional: Box<Expr>,
+    pub then_branch: Box<Stmt>,
+    pub else_branch: Option<Box<Stmt>>
 }
 
 #[derive(Debug)]
@@ -126,7 +141,12 @@ pub struct LiteralExpr {
    pub val: LoxValue
 }
 #[derive(Debug)]
-pub struct LogicalExpr;
+pub struct LogicalExpr {
+    pub left: Box<Expr>,
+    pub op: lex::Token,
+    pub right: Box<Expr>
+}
+
 #[derive(Debug)]
 pub struct SetExpr;
 #[derive(Debug)]
@@ -145,6 +165,7 @@ pub struct VariableExpr {
 
 pub trait ExprVisitor<R> {
     fn visit_expr(&mut self, expr: &Expr) -> R;
+    fn visit_logical_expr(&mut self, expr: &Expr) -> R;
 }
 
 impl ExprVisitor<String> for PrintVisitor {
@@ -160,7 +181,9 @@ impl ExprVisitor<String> for PrintVisitor {
             Expr::Get(_) => {String::new()},
             Expr::Grouping(_) => {String::new()},
             Expr::Literal(lit) => {lit.val.to_string()},
-            Expr::Logical(LogicalExpr) => {String::new()},
+            Expr::Logical(logical_expr) => {
+                self.visit_logical_expr(expr)
+            }
             Expr::Set(SetExpr) => {String::new()},
             Expr::Super(SuperExpr) => {String::new()},
             Expr::This(ThisExpr) => {String::new()},
@@ -179,6 +202,21 @@ impl ExprVisitor<String> for PrintVisitor {
             Expr::ParseError => "parse_error".to_string()
         }
 
+    }
+
+    fn visit_logical_expr(&mut self, expr: &Expr) -> String {
+        match expr {
+            Expr::Logical(l) => {
+                format!("({} {} {})",
+                l.op.lexeme,
+                self.visit_expr(&l.left),
+                self.visit_expr(&l.right))
+            },
+            _ => {
+                "parse_error".to_string()
+            }
+
+        }
     }
 
 }
@@ -200,7 +238,9 @@ impl ExprVisitor<()> for ErrorVisitor {
                 self.visit_expr(&grp.group);
             },
             Expr::Literal(_lit) => {},
-            Expr::Logical(LogicalExpr) => {},
+            Expr::Logical(logical_expr) => {
+                self.visit_logical_expr(expr);
+            },
             Expr::Set(SetExpr) => {},
             Expr::Super(SuperExpr) => {},
             Expr::This(ThisExpr) => {},
@@ -210,6 +250,16 @@ impl ExprVisitor<()> for ErrorVisitor {
             Expr::ParseError =>  {
                 self.has_error = true;
             }
+        }
+    }
+
+    fn visit_logical_expr(&mut self, expr: &Expr) -> () {
+        match expr {
+            Expr::Logical(logical_expr) => {
+                self.visit_expr(&logical_expr.left);
+                self.visit_expr(&logical_expr.right);
+            },
+            _ => {}
         }
     }
 }
@@ -241,7 +291,6 @@ mod test {
         });
         let mut visitor =  PrintVisitor{};
         let output = visitor.visit_expr(&bexpr);
-        eprintln!("print visitor: {}", output);
         assert!(!output.is_empty());
     }
 }

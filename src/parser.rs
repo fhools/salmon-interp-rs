@@ -153,17 +153,32 @@ impl Parser {
         var_decl_stmt
     }
 
-    // statement := "print" expression_statement
+    // statement := ifStmt 
+    //             | "print" expression_statement
     //             | expression_statement
     //             | block 
     fn statement(&mut self) -> Stmt {
-        if self.match_any_of(&[LoxToken![Print]]) {
+        if self.match_any_of(&[LoxToken![If]]) {
+            self.if_statement()
+        } else if self.match_any_of(&[LoxToken![Print]]) {
             self.print_statement()
         } else if self.match_any_of(&[LoxToken![LeftBrace]]) {
             self.block()
         } else {
             self.expression_statement()
         }
+    }
+    // ifStmt := if "(" expression ")" statement ("else" statement )?
+    fn if_statement(&mut self) -> Stmt {
+        self.consume(&LoxToken![LeftParen], "expected '(' following if");
+        let conditional = self.expression();
+        self.consume(&LoxToken![RightParen], "expected ')' following if condtional");
+        let then_branch = self.statement();
+        let mut else_branch: Option<Box<Stmt>> = None;
+        if self.match_any_of(&[LoxToken![Else]]) {
+            else_branch = Some(Box::new(self.statement()));
+        }
+        Stmt::If(IfStmt { conditional, then_branch: Box::new(then_branch) , else_branch })
     }
 
     // block := "{" declaration * "}"
@@ -201,7 +216,7 @@ impl Parser {
 
     // IDENTIFIER but really goes parsed as only VariableExpr i.e. lvalue
     // assignment := IDENTIFIER = assignment
-    //              | equality
+    //              | logical_or 
     fn assignment(&mut self) -> Box<Expr> {
         // The implementation of this from the book is notable for the following reasons: 
         // We try to parse an expression
@@ -213,12 +228,12 @@ impl Parser {
         // expression by itself
 
         // this could be a var 
-        let variable_expr_or_equality = self.equality();
+        let expr = self.logical_or();
 
         if self.match_any_of(&[LoxToken![Equal]]) {
             let equals_tok = self.previous().clone();
             let value = self.assignment();
-            match *variable_expr_or_equality {
+            match *expr {
                 Expr::Variable(var) => {
                     Box::new(Expr::Assign(AssignExpr{name: var.name, value}))
                 },
@@ -229,8 +244,30 @@ impl Parser {
                 }
             }
         } else {
-            variable_expr_or_equality
+            expr
         }
+    }
+
+    // logical_or := logic_and ( 'or' logical_and)*
+    fn logical_or(&mut self) -> Box<Expr> {
+        let mut expr = self.logical_and();
+        while self.match_any_of(&[LoxToken![Or]]) {
+           let op = self.previous().clone();
+           let right_expr = self.logical_and(); 
+           expr = Box::new(Expr::Logical(LogicalExpr { left: expr, op, right: right_expr }));
+        }
+        expr
+    }
+
+    // logical_and := equality ( 'and' equality)*
+    fn logical_and(&mut self) -> Box<Expr> {
+       let mut expr = self.equality();
+        while self.match_any_of(&[LoxToken![And]]) {
+           let op = self.previous().clone();
+           let right_expr = self.equality(); 
+           expr = Box::new(Expr::Logical(LogicalExpr { left: expr, op, right: right_expr }));
+        }
+        expr
     }
 
     // equality := comparison ( ( "!=" | "==" ) comparison )*

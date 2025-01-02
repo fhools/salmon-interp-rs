@@ -303,7 +303,6 @@ impl Scanner {
 
     fn string(&mut self) {
         while let Some(c) = self.peek() {
-            println!("strings: {:?}", c);
             if c == '"' {
                 break;
             }
@@ -389,49 +388,43 @@ pub fn gen_tokens<S: Into<String>>(source: S) -> Vec<Token> {
 }
 
 mod test {
-    use super::{TokenType, Scanner};
+    use super::{Scanner, TokenType};
 
     #[test]
     fn scanner_single_char() {
         let mut scanner = Scanner::new("+ + - ");
         let tokens = scanner.scan_tokens();
-        println!("tokens: {:?}", tokens);
-        assert!(tokens.len() > 0);
+        assert!(!tokens.is_empty());
     }
     #[test]
     fn scanner_string() {
         let mut scanner = Scanner::new("\"test\"");
         let tokens = scanner.scan_tokens();
-        println!("tokens: {:?}", tokens);
-        assert!(tokens.len() > 0);
+        assert!(!tokens.is_empty());
     }
     #[test]
     fn scanner_number() {
         let mut scanner = Scanner::new("10.50");
         let tokens = scanner.scan_tokens();
-        println!("tokens: {:?}", tokens);
-        assert!(tokens.len() > 0);
+        assert!(!tokens.is_empty());
     }
     #[test]
     fn scanner_identifier() {
         let mut scanner = Scanner::new("this is a test");
         let tokens = scanner.scan_tokens();
-        println!("tokens: {:?}", tokens);
-        assert!(tokens.len() > 0);
+        assert!(!tokens.is_empty());
     }
 
     #[test]
     fn scanner_comments() {
         let mut scanner = Scanner::new("//comment \n this");
         let tokens = scanner.scan_tokens();
-        println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);
         assert_eq!(tokens[0].token_type, TokenType::This);
 
         // handle corner case of empty comment
         scanner = Scanner::new("//\nthis");
         let tokens = scanner.scan_tokens();
-        println!("tokens: {:?}", tokens);
         assert!(tokens.len() > 0);
         assert_eq!(tokens[0].token_type, TokenType::This);
     }

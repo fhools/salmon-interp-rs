@@ -92,6 +92,7 @@ impl<W: Write> Interpreter<W> {
     }
 
     fn print_statement_output(&mut self, msg: &str) -> io::Result<()> {
+        // TODO: should print to stdout and an optional output stream
         writeln!(self.out, "{}", msg)
     }
 
@@ -127,13 +128,29 @@ impl<W: Write> Interpreter<W> {
                    .transpose()?
                    // unwrap will return LoxValue or nil if Option None
                    .unwrap_or(LoxValue::Nil);
-                eprintln!("declaring var: {} value: {}", name, lox_value.to_string());
+                //eprintln!("declaring var: {} value: {}", name, lox_value.to_string());
                 self.environment.set(name, lox_value);
                 Ok(())   
            },
+
            Stmt::Block(ref block) => {
                self.execute_block(&block.statements, Environment::with_enclosing(self.environment.clone()))
            },
+
+           Stmt::If(ref if_stmt) => {
+               let lox_val = self.evaluate(&if_stmt.conditional);
+               lox_val.map_or_else(|err| {
+                   Err(err)
+               }, 
+               |lox_val|  {
+                   if is_truthy(&lox_val) {
+                       self.execute(&if_stmt.then_branch);
+                   } else if let Some(ref else_branch) =  if_stmt.else_branch {
+                       self.execute(&else_branch);
+                   }
+                   Ok(())
+               })
+           }
        }
 
     }
@@ -194,8 +211,31 @@ fn to_op_fn(op_tok: TokenType) -> Box<dyn Fn(&LoxValue, &LoxValue) -> Result<Lox
                 Err(RuntimeError::General("/ operands must be both numbers"))
             },
 
-            // TODO: handle logical comparison expressions! <=, >= , == , != , < , > 
-            //
+            // == 
+            (TokenType::EqualEqual, LoxValue::Number(ref lval), LoxValue::Number(ref rval))  => {
+                Ok(LoxValue::Bool(lval == rval))
+            },
+
+            (TokenType::EqualEqual, LoxValue::String(ref lval), LoxValue::String(ref rval)) => {
+                Ok(LoxValue::Bool(lval == rval))
+            },
+
+            (TokenType::EqualEqual, _, _) => {
+                Err(RuntimeError::General("== operands must be both numbers, or both strings"))
+            },
+
+            // !=
+            (TokenType::BangEqual, LoxValue::Number(ref lval), LoxValue::Number(ref rval))  => {
+                Ok(LoxValue::Bool(lval != rval))
+            },
+
+            (TokenType::BangEqual, LoxValue::String(ref lval), LoxValue::String(ref rval)) => {
+                Ok(LoxValue::Bool(lval != rval))
+            },
+
+            (TokenType::BangEqual, _, _) => {
+                Err(RuntimeError::General("== operands must be both numbers, or both strings"))
+            },
             _ => {
                 Err(RuntimeError::General("binary expression unknown operator")) 
             }
@@ -225,6 +265,9 @@ impl<W: Write> ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter<W> {
                     },
                     _ => { Err(RuntimeError::General("binary op failed on values")) }
                 }
+            },
+            Expr::Logical(logical_expr) => {
+                self.visit_logical_expr(expr)
             },
             Expr::Literal(lit) => {
                 Ok(lit.val.clone())
@@ -274,15 +317,46 @@ impl<W: Write> ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter<W> {
             }
         }
     }
+
+    fn visit_logical_expr(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
+        match expr {
+            Expr::Logical(logical_expr) =>  {
+                let left = self.evaluate(&logical_expr.left);
+                if logical_expr.op.token_type == TokenType::Or {
+                    if let Ok(ref loxval) = left {
+                        if is_truthy(loxval) {
+                            return left;
+                        } 
+                    } else {
+                        // RuntimeError
+                        return left;
+                    }
+                } else {
+                    if let Ok(ref loxval) = left {
+                        if !is_truthy(loxval) {
+                            return left;
+                        } 
+                    } else {
+                        // RuntimeError
+                        return left;
+                    }
+                }
+                self.evaluate(&logical_expr.right)
+            },
+            _ => {
+                Err(RuntimeError::General(Box::leak(format!("visit_logical unhandled expr: {:?}", expr.to_string()).into_boxed_str())))
+            },
+        }
+    }
 }
 
-fn evaluate_expr(expr: &Expr) -> LoxValue {
+fn evaluate_expr(expr: &Expr) -> Result<LoxValue, RuntimeError> {
     let mut interpreter = Interpreter::new();
-    interpreter.evaluate(expr).unwrap_or_else(|RuntimeError::General(s)| {
+    interpreter.evaluate(expr).map_or_else(|RuntimeError::General(s)| {
         eprintln!("runtime error to evaluate: \"{}\" : {}", expr, s);
-        LoxValue::Nil
-    })
-
+        Err(RuntimeError::General(s)) 
+    },
+    Ok)
 }
 mod test {
     use super::*;
@@ -312,49 +386,52 @@ mod test {
     #[test]
     fn test_evaluate_expr() {
         let expr_val = do_expr("1+2+3")
-            .map(|expr| { 
-                eprintln!("expr: {}", expr.to_string());
+            .map_err(Into::into)
+            .and_then(|expr| { 
                 evaluate_expr(&expr)
             })
             .map(|lvalue| {
-                eprintln!("loxval: {:?}", lvalue);
                 let val: f32 = match lvalue { LoxValue::Number(v) => v, _ => f32::NAN };
                 val
             })
         .unwrap_or(102.0);
-        eprintln!("evaluated expr to: {}", expr_val);
+        assert_eq!(expr_val.to_string(), "6"); 
     }
 
     #[test]
     fn test_evaluate_unary_expr() {
         let expr_val = do_expr("-10")
-            .map(|expr| { 
-                eprintln!("expr: {}", expr.to_string());
+            .map_err(Into::into)
+            .and_then(|expr| { 
                 evaluate_expr(&expr)
             })
             .map(|lvalue| {
-                eprintln!("loxval: {:?}", lvalue);
                 let val: f32 = match lvalue { LoxValue::Number(v) => v, _ => f32::NAN };
                 val
             })
         .unwrap_or(102.0);
-        eprintln!("evaluated expr to: {}", expr_val);
+        assert_eq!(expr_val, -10.0); 
     }
 
     #[test]
     fn test_evaluate_runtime_error() {
+        // TODO: do_expr returns a ParseError
         let expr_val = do_expr("10 / 0")
-            .map(|expr| { 
-                eprintln!("expr: {}", expr.to_string());
+            // convert ParseError to RutimeError
+            .map_err(Into::into)
+            // evaluate to get a Result<LoxValue>
+            .and_then(|expr| { 
                 evaluate_expr(&expr)
             })
+            // Convert RuntimeError to LoxValue with NAN
+            .or(Ok::<LoxValue, RuntimeError>(LoxValue::Number(f32::NAN)))
+            // convert to f32
             .map(|lvalue| {
-                eprintln!("loxval: {:?}", lvalue);
                 let val: f32 = match lvalue { LoxValue::Number(v) => v, _ => f32::NAN };
                 val
-            })
-        .unwrap_or(102.0);
-        eprintln!("evaluated expr to: {}", expr_val);
+            }).unwrap();
+        eprintln!("expr_val: {}", expr_val);
+        assert!(expr_val.is_nan())
     }
 
     #[test]
@@ -388,7 +465,7 @@ mod test {
     fn test_lexical_scope() {
         let mut do_interpreter = DoIt{};
         do_interpreter.interpret(
-            r"var a = 10;
+            r"var a = true;
               print a;
               {
                 var a = 20;
@@ -403,7 +480,8 @@ mod test {
     fn test_lexical_scope_out_buff() -> Result<(), RuntimeError> {
         let mut do_interpreter = DoIt{};
         do_interpreter.interpret_capture_output(
-            r"var a = 10;
+            r"
+              var a = 10;
               print a;
               {
                 var a = 20;
@@ -414,6 +492,53 @@ mod test {
             .map(|s| {
                 eprintln!("captured output: {}", s);
                 assert_eq!(s, "10\n20\n10\n");
+                Ok::<(),RuntimeError>(())
+            })?
+    }
+
+    #[test]
+    fn test_lexical_scope_shadow_out_buff() -> Result<(), RuntimeError> {
+        let mut do_interpreter = DoIt{};
+        do_interpreter.interpret_capture_output(
+            r"
+              // global a
+              var a = 10;
+              print a;
+              {
+                //shadow a but use a in initializer
+                var a = a + 20;
+                // expected 10 + 20 = 30
+                print a;
+              }
+              print a;
+              ")
+            .map(|s| {
+                eprintln!("captured output: {}", s);
+                assert_eq!(s, "10\n30\n10\n");
+                Ok::<(),RuntimeError>(())
+            })?
+    }
+
+    #[test]
+    fn test_logical() -> Result<(), RuntimeError> {
+        let mut do_interpreter = DoIt{};
+        do_interpreter.interpret_capture_output(
+            r"
+              // global a
+              var a = 10;
+              print a;
+              if (a == 11) {
+                //shadow a but use a in initializer
+                var a = a + 20;
+                // expected 10 + 20 = 30
+                print a;
+              } else {
+                print 2000;
+              }
+              ")
+            .map(|s| {
+                eprintln!("captured output: {}", s);
+                assert_eq!(s, "10\n2000\n");
                 Ok::<(),RuntimeError>(())
             })?
     }
