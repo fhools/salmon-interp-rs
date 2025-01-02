@@ -28,6 +28,13 @@ impl From<ParseError> for RuntimeError {
        RuntimeError::General(Box::leak(string.into_boxed_str()) )
     }
 }
+
+impl From<io::Error> for RuntimeError {
+    fn from(err: io::Error) -> Self {
+       RuntimeError::General(Box::leak(err.to_string().into_boxed_str()) )
+    }
+}
+
 impl From<io::Error> for SalmonError {
     fn from(error: io::Error) -> Self {
         let m = format!("io error: {}", error);
