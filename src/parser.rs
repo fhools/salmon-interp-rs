@@ -153,13 +153,16 @@ impl Parser {
         var_decl_stmt
     }
 
-    // statement := ifStmt 
+    // statement := if_statement 
+    //             | while_statement
     //             | "print" expression_statement
     //             | expression_statement
     //             | block 
     fn statement(&mut self) -> Stmt {
         if self.match_any_of(&[LoxToken![If]]) {
             self.if_statement()
+        } else if self.match_any_of(&[LoxToken![While]]) {
+            self.while_statement()
         } else if self.match_any_of(&[LoxToken![Print]]) {
             self.print_statement()
         } else if self.match_any_of(&[LoxToken![LeftBrace]]) {
@@ -170,7 +173,7 @@ impl Parser {
     }
     // ifStmt := if "(" expression ")" statement ("else" statement )?
     fn if_statement(&mut self) -> Stmt {
-        self.consume(&LoxToken![LeftParen], "expected '(' following if");
+        self.consume(&LoxToken![LeftParen], "expected '(' following 'if'");
         let conditional = self.expression();
         self.consume(&LoxToken![RightParen], "expected ')' following if condtional");
         let then_branch = self.statement();
@@ -179,6 +182,17 @@ impl Parser {
             else_branch = Some(Box::new(self.statement()));
         }
         Stmt::If(IfStmt { conditional, then_branch: Box::new(then_branch) , else_branch })
+    }
+
+    // while_statement := while "(" expression ")" statement 
+    fn while_statement(&mut self) -> Stmt {
+        self.consume(&LoxToken![LeftParen], "expected '(' following 'while'");
+        let condition = self.expression();
+        self.consume(&LoxToken![RightParen], "expected ')' following 'while'");
+        let body = self.statement();
+        let while_stmt = Stmt::While(WhileStmt{ condition, body: Box::new(body) });
+        eprintln!("while_stmt: {}", while_stmt.to_string());
+        while_stmt
     }
 
     // block := "{" declaration * "}"

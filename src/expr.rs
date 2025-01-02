@@ -9,6 +9,7 @@ pub enum Stmt {
     VarDecl(VarDecl),
     Block(Block),
     If(IfStmt),
+    While(WhileStmt),
 }
 
 pub trait StmtVisitor<R> {
@@ -50,6 +51,11 @@ impl StmtVisitor<String> for PrintVisitor {
                 print_visitor.visit_stmt(&if_stmt.then_branch))
 
             }
+            Stmt::While(while_stmt) => { 
+                format!("(while {} {})",
+                print_visitor.visit_expr(&while_stmt.condition),
+                print_visitor.visit_stmt(&while_stmt.body))
+            }
         }
     }
 }
@@ -62,13 +68,6 @@ pub struct Block {
 pub struct VarDecl {
     pub name: lex::Token,
     pub initializer: Option<Box<Expr>>
-}
-
-#[derive(Debug)]
-pub struct IfStmt {
-    pub conditional: Box<Expr>,
-    pub then_branch: Box<Stmt>,
-    pub else_branch: Option<Box<Stmt>>
 }
 
 #[derive(Debug)]
@@ -111,6 +110,13 @@ impl Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut printer = PrintVisitor;
         write!(f, "{}", printer.visit_expr(self))
+    }
+}
+
+impl Display for Stmt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut printer = PrintVisitor;
+        write!(f, "{}", printer.visit_stmt(self))
     }
 }
 
@@ -161,6 +167,19 @@ pub struct UnaryExpr {
 #[derive(Debug)]
 pub struct VariableExpr {
     pub name: lex::Token
+}
+
+#[derive(Debug)]
+pub struct IfStmt {
+    pub conditional: Box<Expr>,
+    pub then_branch: Box<Stmt>,
+    pub else_branch: Option<Box<Stmt>>
+}
+
+#[derive(Debug)]
+pub struct WhileStmt {
+    pub condition: Box<Expr>,
+    pub body: Box<Stmt>,
 }
 
 pub trait ExprVisitor<R> {
