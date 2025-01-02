@@ -321,26 +321,12 @@ impl<W: Write> ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter<W> {
     fn visit_logical_expr(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         match expr {
             Expr::Logical(logical_expr) =>  {
-                let left = self.evaluate(&logical_expr.left);
-                if logical_expr.op.token_type == TokenType::Or {
-                    if let Ok(ref loxval) = left {
-                        if is_truthy(loxval) {
-                            return left;
-                        } 
-                    } else {
-                        // RuntimeError
-                        return left;
-                    }
-                } else {
-                    if let Ok(ref loxval) = left {
-                        if !is_truthy(loxval) {
-                            return left;
-                        } 
-                    } else {
-                        // RuntimeError
-                        return left;
-                    }
-                }
+                let left_val = self.evaluate(&logical_expr.left)?;
+                let is_or = logical_expr.op.token_type == TokenType::Or;
+
+                if (is_or && is_truthy(&left_val)) || (!is_or && !is_truthy(&left_val)) {
+                    return Ok(left_val);
+                } 
                 self.evaluate(&logical_expr.right)
             },
             _ => {
@@ -535,10 +521,13 @@ mod test {
               } else {
                 print 2000;
               }
+              if (a == 10) {
+                print 30;
+              }
               ")
             .map(|s| {
                 eprintln!("captured output: {}", s);
-                assert_eq!(s, "10\n2000\n");
+                assert_eq!(s, "10\n2000\n30\n");
                 Ok::<(),RuntimeError>(())
             })?
     }
