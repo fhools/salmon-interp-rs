@@ -1,6 +1,8 @@
 use super::lex;
 use std::fmt::{self, Display};
-use super::interp::RuntimeError;
+use std::io::Write;
+use std::fmt::Debug;
+use super::interp::{RuntimeError, Interpreter};
 
 #[derive(Debug)]
 pub enum Stmt {
@@ -86,22 +88,32 @@ pub enum Expr {
     Assign(AssignExpr),
     ParseError
 }
-
+impl Clone for Box<dyn LoxCallable> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
 #[derive(Debug, Clone)]
 pub enum LoxValue {
     Nil,
     Bool(bool),
     Number(f32),
-    String(String)
+    String(String),
+    Function(Box<dyn LoxCallable>)
 }
 
+pub trait LoxCallable : Debug {
+    fn call(&self, interpreter: &mut Interpreter, env_id: usize);
+    fn clone_box(&self) -> Box<dyn LoxCallable>;
+}
 impl ToString for LoxValue {
     fn to_string(&self) -> String {
         match self {
             LoxValue::Nil => "nil".to_string(),
             LoxValue::Bool(b) => format!("{}", b),
             LoxValue::Number(n) => format!("{}", n),
-            LoxValue::String(s) => s.clone()
+            LoxValue::String(s) => s.clone(),
+            LoxValue::Function(_l) => format!("callable()")
         }
     }
 }

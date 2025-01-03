@@ -1,11 +1,25 @@
 use crate::expr::*;
 use crate::lex::TokenType;
 use std::collections::HashMap;
-use std::io::{self, Write};
-pub struct Interpreter<W: Write> {
+use std::io::{self, Write, Cursor};
+use std::any::Any;
+
+// this AnyWrite/WriteAny is to allow us to coerce the Write dyn object into a Cursor
+pub trait WriteAny: Write + Any {
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+type AnyWrite = dyn WriteAny;
+
+// Blanket impl for T: Write + Any
+impl<T: Write + Any> WriteAny for T {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+pub struct Interpreter {
     pub environments: Vec<Environment>,
     pub cur_env: usize,
-    out: W,
+    out: Box<AnyWrite>,
 }
 
 #[derive(Default, Debug)]
@@ -15,7 +29,7 @@ pub struct Environment {
     pub values: HashMap<String, LoxValue>,
 }
 
-impl<'a> Environment {
+impl Environment {
     fn with_enclosing(enclosing_env_id: usize) -> Self {
         Environment {
             enclosing_env: Some(enclosing_env_id),
@@ -29,18 +43,17 @@ impl<'a> Environment {
 pub enum RuntimeError {
     General(&'static str),
 }
-impl<'a>  Interpreter<std::io::Stdout> {
+
+impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
             environments: vec![Environment::default()],
             cur_env: 0,
-            out: std::io::stdout(),
+            out: Box::new(std::io::stdout()),
         }
     }
-}
 
-impl<W: Write> Interpreter<W> {
-    pub fn new_with_out(out_stream: W) -> Self {
+    pub fn new_with_out(out_stream: Box<AnyWrite>) -> Self {
         Interpreter {
             environments: vec![Environment::default()],
             cur_env: 0,
@@ -207,6 +220,18 @@ impl<W: Write> Interpreter<W> {
     fn pop_env(&mut self) {
         self.environments.pop();
     }
+    pub fn get_buffer_contents(&mut self) -> Option<String> {
+        // this is courtesy of chatgpt for this tricky part
+        // to coerce the output to an any for the downcast_mut call
+        let write_any_ref = self.out.as_mut();
+        let any_cursor = write_any_ref.as_any_mut(); 
+        if let Some(cursor) = any_cursor.downcast_mut::<std::io::Cursor<Vec<u8>>>() {
+            let bytes = cursor.get_ref();
+            return Some(String::from_utf8_lossy(bytes).to_string());
+        }
+        eprintln!("get_buffer failed");
+        None
+    }
 }
 
 fn to_op_fn(
@@ -282,11 +307,11 @@ fn is_truthy(loxval: &LoxValue) -> bool {
     match loxval {
         LoxValue::Nil => false,
         LoxValue::Bool(ref b) => *b,
-        LoxValue::Number(_) | LoxValue::String(_) => true,
+        LoxValue::Number(_) | LoxValue::String(_) | LoxValue::Function(_) => true,
     }
 }
 
-impl<W: Write> ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter<W> {
+impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
     fn visit_expr(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         match expr {
             Expr::Binary(b) => {
@@ -398,10 +423,11 @@ mod test {
         fn interpret_capture_output(&mut self, source: &str) -> Result<String, RuntimeError> {
             let mut parser = Parser::new(&gen_tokens(source));
             let stmts = parser.parse()?;
-            let mut buff = Vec::new();
-            let mut interpreter = Interpreter::new_with_out(&mut buff);
+            let mut cursor_buff = Cursor::new(Vec::new());
+            let mut interpreter = Interpreter::new_with_out(Box::new(cursor_buff));
             interpreter.interpret(&stmts);
-            Ok(String::from_utf8_lossy(&buff).to_string())
+            let output = interpreter.get_buffer_contents();
+            output.map_or_else(|| Err(RuntimeError::General("error")), |s| Ok(s))
         }
     }
     #[test]
@@ -607,15 +633,14 @@ mod test {
             .interpret_capture_output(
                 r"
                 var a = 10;
-              for (var a = 1; a != 5;) {
-                 print a;
-                 a = a + 1;
-              }
-              print a;
+                for (var a = 1; a != 5;) {
+                  print a;
+                  a = a + 1;
+                }
+                print a;
               ",
             )
             .map(|s| {
-                eprintln!("captured output: {}", s);
                 assert_eq!(s, "1\n2\n3\n4\n10\n");
                 Ok::<(), RuntimeError>(())
             })?

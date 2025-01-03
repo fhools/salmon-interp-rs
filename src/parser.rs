@@ -74,7 +74,7 @@ impl Parser {
         if self.check(tok_type) {
             Ok(self.advance())
         } else {
-            eprintln!("consume err: {}", expected_str);
+            //eprintln!("consume err: {}", expected_str);
             Err(ParseError::General(self.peek().clone(), expected_str.to_string()))
         }
     }
@@ -194,7 +194,6 @@ impl Parser {
         self.consume(&LoxToken![RightParen], "expected ')' following 'while'");
         let body = self.statement();
         let while_stmt = Stmt::While(WhileStmt{ condition, body: Box::new(body) });
-        eprintln!("while_stmt: {}", while_stmt.to_string());
         while_stmt
     }
 
@@ -227,7 +226,6 @@ impl Parser {
         } else {
             condition = Some(Box::new(Expr::Literal(LiteralExpr{val: LoxValue::Bool(true)})));
         }
-        eprintln!("condition: {:?}", condition);
         self.consume(&LoxToken![Semicolon], "expected ';' after condition for 'for'");
 
         let mut increment = None;
@@ -235,7 +233,6 @@ impl Parser {
             increment = Some(self.expression());
         }
         // finally munch the closing paren
-        eprintln!("current token: {:?}", self.tokens[self.current]);
         self.consume(&LoxToken![RightParen], "expected ')' following for clause");
 
         let mut body = self.statement();
@@ -249,7 +246,6 @@ impl Parser {
         body = Stmt::While(WhileStmt { condition: condition.unwrap(), body: Box::new(body)});
     
         if let Some(initializer) = initializer {
-            eprintln!("initializer: {:?}", initializer);
             // NOTE: Kind of interesting here the initializer is in it's own block 
             // and then the body of the for loop is another nested block inside that
             // is that an ok design?
@@ -514,7 +510,6 @@ mod test {
         assert_eq!(t.token_type, TokenType::This);
         parser.advance();
         let t = parser.peek();
-        eprintln!("token peeked: {:?}", t);
         let ident_matched = parser.match_any_of(&[LoxToken![Identifier("".to_string())]]); 
         assert!(ident_matched)
     }
@@ -534,7 +529,6 @@ mod test {
                 let mut print_visitor = PrintVisitor{};
                 print_visitor.visit_expr(&e)
             }).unwrap_or("issue".to_string());
-            eprintln!("parse() returned: {}", print_output);
         }
         assert!(expr.is_ok());
     }
@@ -547,10 +541,7 @@ mod test {
                 let mut print_visitor = PrintVisitor{};
                 print_visitor.visit_expr(&e)
             }).unwrap_or("issue".to_string());
-            eprintln!("parse_bad test - parse() returned: {}", print_output);
-        } else {
-            eprintln!("parse failed as expected");
-        }
+        } 
     }
     #[test]
     fn test_parse_binary_expr2() {
