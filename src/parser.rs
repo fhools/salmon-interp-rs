@@ -205,6 +205,7 @@ impl Parser {
     //             | "print" expression_statement
     //             | expression_statement
     //             | block 
+    //             | return_statement
     fn statement(&mut self) -> Stmt {
         if self.match_any_of(&[LoxToken![If]]) {
             self.if_statement()
@@ -216,7 +217,9 @@ impl Parser {
             self.print_statement()
         } else if self.match_any_of(&[LoxToken![LeftBrace]]) {
             Stmt::Block(Block{statements: self.block()})
-        } else {
+        } else if self.match_any_of(&[LoxToken![Return]]) {
+            self.return_statement()
+        }else {
             self.expression_statement()
         }
     }
@@ -318,6 +321,18 @@ impl Parser {
         }
         Stmt::Print(expr)
     }
+
+    // return_statement := "return" expression ";"
+    fn return_statement(&mut self) -> Stmt {
+        let return_tok = self.previous().clone();
+        let mut expr = None;
+        if !self.check(&LoxToken![Semicolon]) {
+            expr = Some(self.expression());
+        }
+        self.consume(&LoxToken![Semicolon], "expect ';' after return expression");
+        Stmt::Return(ReturnStmt { return_tok, value: expr})
+    }
+
     
     // expression_statement := expression ";"
     fn expression_statement(&mut self) -> Stmt {

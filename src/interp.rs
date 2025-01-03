@@ -118,7 +118,10 @@ impl Interpreter {
                 Ok(lox_value)
             }
 
-            Stmt::Block(ref block) => self.execute_block(&block.statements, self.cur_env),
+            Stmt::Block(ref block) => {
+                //eprintln!("block running");
+                self.execute_block(&block.statements, self.cur_env)
+            },
 
             Stmt::If(ref if_stmt) => {
                 let lox_val = self.evaluate(&if_stmt.conditional)?;
@@ -132,10 +135,13 @@ impl Interpreter {
             },
 
             Stmt::While(ref while_stmt) => {
-                let mut lox_val = self.evaluate(&while_stmt.condition)?;
-                while is_truthy(&lox_val) {
-                    self.execute(&while_stmt.body)?;
-                    lox_val = self.evaluate(&while_stmt.condition)?;
+                let mut cond_lox_val = self.evaluate(&while_stmt.condition)?;
+                while is_truthy(&cond_lox_val) {
+                    let stmt_val = self.execute(&while_stmt.body)?;
+                    if let LoxValue::Return(_) = stmt_val {
+                        return Ok(stmt_val);
+                    }
+                    cond_lox_val = self.evaluate(&while_stmt.condition)?;
                 }
                 Ok(LoxValue::Nil)
             },
@@ -144,6 +150,17 @@ impl Interpreter {
                 self.define(&function_stmt.name.lexeme, self.cur_env, loxval);
                 Ok(LoxValue::Nil)
             },
+            Stmt::Return(ref return_stmt)  => {
+                match return_stmt.value {
+                    Some(ref expr) => { 
+                        let return_val = self.evaluate(expr)?;
+                        Ok(LoxValue::Return(Some(Box::new(return_val))))
+                    },
+                    None => {
+                        Ok(LoxValue::Return(None))
+                    }
+                }
+            }
             Stmt::ParseError => { todo!() }
         }
 
@@ -160,8 +177,13 @@ impl Interpreter {
         // value of last statement executed
         let mut result = Ok(LoxValue::Nil);
         for s in stmts {
+            //eprintln!("going to run: {:?}", s);
             result = self.execute(s);
             if result.is_err() {
+                eprintln!("error running a block statement: {:?}", result);
+                break;
+            } else if let Ok(LoxValue::Return(_)) = result {
+                // need to break instead of returning so that the env is restored
                 break;
             }
         }
@@ -174,7 +196,6 @@ impl Interpreter {
     // DEBUG add level parameter
     fn get(&self, source: impl AsRef<str>, env_id: usize, level: usize) -> Result<LoxValue, RuntimeError> {
         let source: &str = source.as_ref();
-
         // which one is better method 1 using nested chains
         // i kind of dislike the way map_or_else or map_or take the error/default value as first
         // parameter, and success value as second
@@ -192,12 +213,13 @@ impl Interpreter {
         //    |val| Ok(val.to_owned()))
 
         // or this one using early return?
+        //eprintln!("looking in env_id {}", env_id);
         if let Some(value) = self.environments[env_id].values.get(source) {
             //eprintln!("env get level: {} key: {}  val: {}", level, source, value.to_string());
             return Ok(value.clone());
         }
-
-        if let Some(ref enclosing_id) = self.environments[self.cur_env].enclosing_env {
+        if let Some(ref enclosing_id) = self.environments[env_id].enclosing_env {
+            //eprintln!("did not find in env_id {} looking in id {}", env_id, enclosing_id);
             return self.get(source, *enclosing_id,level + 1);
         }
         Err(RuntimeError::General(Box::leak(
@@ -311,8 +333,53 @@ fn to_op_fn(
             }
 
             (TokenType::BangEqual, _, _) => Err(RuntimeError::General(
-                "== operands must be both numbers, or both strings",
+                "!= operands must be both numbers, or both strings",
             )),
+
+            // <
+            (TokenType::Less, LoxValue::Number(ref lval), LoxValue::Number(ref rval)) => {
+                Ok(LoxValue::Bool(lval < rval))
+            }
+            (TokenType::Less, LoxValue::String(ref lval), LoxValue::String(ref rval)) => {
+                Ok(LoxValue::Bool(lval < rval))
+            }
+            (TokenType::Less, _, _) => Err(RuntimeError::General(
+                "< operands must be both numbers, or both strings",
+            )),
+
+            // <=
+            (TokenType::LessEqual, LoxValue::Number(ref lval), LoxValue::Number(ref rval)) => {
+                Ok(LoxValue::Bool(lval <= rval))
+            }
+            (TokenType::LessEqual, LoxValue::String(ref lval), LoxValue::String(ref rval)) => {
+                Ok(LoxValue::Bool(lval <= rval))
+            }
+            (TokenType::LessEqual, _, _) => Err(RuntimeError::General(
+                "<= operands must be both numbers, or both strings",
+            )),
+
+            // >
+            (TokenType::Greater, LoxValue::Number(ref lval), LoxValue::Number(ref rval)) => {
+                Ok(LoxValue::Bool(lval > rval))
+            }
+            (TokenType::Greater, LoxValue::String(ref lval), LoxValue::String(ref rval)) => {
+                Ok(LoxValue::Bool(lval > rval))
+            }
+            (TokenType::Greater, _, _) => Err(RuntimeError::General(
+                "> operands must be both numbers, or both strings",
+            )),
+
+            // >=
+            (TokenType::GreaterEqual, LoxValue::Number(ref lval), LoxValue::Number(ref rval)) => {
+                Ok(LoxValue::Bool(lval >= rval))
+            }
+            (TokenType::GreaterEqual, LoxValue::String(ref lval), LoxValue::String(ref rval)) => {
+                Ok(LoxValue::Bool(lval >= rval))
+            }
+            (TokenType::GreaterEqual, _, _) => Err(RuntimeError::General(
+                "> operands must be both numbers, or both strings",
+            )),
+
             _ => Err(RuntimeError::General("binary expression unknown operator")),
         }
     })
@@ -320,7 +387,9 @@ fn to_op_fn(
 
 fn is_truthy(loxval: &LoxValue) -> bool {
     match loxval {
-        LoxValue::Nil => false,
+        // NOTE: truthy for return should actually be a runtime error, but we'll just set it to
+        // false for now
+        LoxValue::Nil | LoxValue::Return(_) => false,
         LoxValue::Bool(ref b) => *b,
         LoxValue::Number(_) | LoxValue::String(_) | LoxValue::Function(_) => true,
     }
@@ -392,6 +461,9 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                     let arg = self.evaluate(expr)?;
                     arguments.push(arg.clone());
                 }
+                // TODO: check arity of arguments matches 
+                // with the callee parameters arity
+                
                 match callee {
                     LoxValue::Function(ref callable) => {
                         callable.call(self, &arguments)
@@ -400,6 +472,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                         Err(RuntimeError::General("callee expression is not callable"))
                     }
                 }
+
             },
 
             a @ _ => {
@@ -686,14 +759,19 @@ mod test {
             .interpret_capture_output(
                 r"
                 fun foo() {
-                  var a = 100;
-                  print a;
+                  var a = 1;
+                  for(; a < 20; a = a + 1) {
+                    if (a == 10) {
+                        return a;
+                    }
+                  }
+                  return a;
                 }
-                foo();
+                print foo();
               ",
             )
             .map(|s| {
-                assert_eq!(s, "100\n");
+                assert_eq!(s, "10\n");
                 Ok::<(), RuntimeError>(())
             })?
     }

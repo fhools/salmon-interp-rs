@@ -13,6 +13,7 @@ pub enum Stmt {
     If(IfStmt),
     While(WhileStmt),
     Function(FunctionStmt),
+    Return(ReturnStmt),
     ParseError,
 }
 
@@ -67,6 +68,13 @@ impl StmtVisitor<String> for PrintVisitor {
                 }
                 format!("(func_decl {} {} ...) ", function.name.lexeme, params)
             },
+            Stmt::Return(return_stmt) => {
+                match return_stmt.value {
+                 Some(ref value_expr) => format!("(return {})", print_visitor.visit_expr(value_expr)),
+                 None => format!("(return)") 
+                }
+            }
+
             Stmt::ParseError => { "Stmt::ParseError".to_string()},
         }
     }
@@ -103,13 +111,20 @@ impl Clone for Box<dyn LoxCallable> {
         self.clone_box()
     }
 }
+
 #[derive(Debug, Clone)]
 pub enum LoxValue {
     Nil,
     Bool(bool),
     Number(f32),
     String(String),
-    Function(Box<dyn LoxCallable>)
+
+    // Dont know yet if this is really part of Crafting Interpreter's design
+    Function(Box<dyn LoxCallable>),
+
+    // Note: this is not in Crafting Interpreters, its because Rust has no exceptions, 
+    // to serve as an unwind mechanism for return statements
+    Return(Option<Box<LoxValue>>)
 }
 
 pub trait LoxCallable : Debug {
@@ -130,10 +145,14 @@ impl LoxCallable for LoxFunction {
         for (i,arg) in arguments.iter().enumerate() {
             interp.define(&self.function.params.get(i).unwrap().lexeme, call_env, arg.clone());
         }
-        interp.execute_block(&self.function.body, call_env);
+        let return_val = if let Ok(LoxValue::Return(Some(call_value))) = interp.execute_block(&self.function.body, call_env) {
+            (*call_value).clone()
+        }  else  {
+            LoxValue::Nil
+        };
         // FIXME: buggy, a call may return closure, maybe we should never even pop env
         interp.pop_env();
-        Ok(LoxValue::Nil)
+        Ok(return_val)
     }
 
     fn clone_box(&self) -> Box<dyn LoxCallable> {
@@ -148,7 +167,9 @@ impl ToString for LoxValue {
             LoxValue::Bool(b) => format!("{}", b),
             LoxValue::Number(n) => format!("{}", n),
             LoxValue::String(s) => s.clone(),
-            LoxValue::Function(_l) => format!("callable()")
+            LoxValue::Function(_l) => format!("callable()"),
+            LoxValue::Return(None) =>  format!("return"),
+            LoxValue::Return(Some(ref box_lv)) => format!("{}",box_lv.to_string())
         }
     }
 }
@@ -238,6 +259,12 @@ pub struct FunctionStmt {
     pub name: Token,
     pub params: Vec<Token>,
     pub body: Vec<Stmt>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReturnStmt {
+    pub return_tok: Token,
+    pub value: Option<Box<Expr>>,
 }
 
 pub trait ExprVisitor<R> {
