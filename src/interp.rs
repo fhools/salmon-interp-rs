@@ -95,7 +95,7 @@ impl<W: Write> Interpreter<W> {
                     // unwrap will return LoxValue or nil if Option None
                     .unwrap_or(LoxValue::Nil);
                 //eprintln!("declaring var: {} value: {}", name, lox_value.to_string());
-                self.set(name, self.cur_env, lox_value)?;
+                self.define(name, self.cur_env, lox_value)?;
                 Ok(())
             }
 
@@ -127,7 +127,7 @@ impl<W: Write> Interpreter<W> {
         // save off Interpreters prior environment
         let previous = self.cur_env;
         
-        let new_env = self.push_env();
+        let new_env = self.push_env(enclosing_env_id);
         self.cur_env = new_env;
 
         let mut result = Ok(());
@@ -177,9 +177,7 @@ impl<W: Write> Interpreter<W> {
         )))
     }
 
-    // TODO: rename this to distinguish that it is used only for var decl, assignment should use
-    // assign()
-    fn set(&mut self, name: impl AsRef<str>, env_id: usize, value: LoxValue) -> Result<(), RuntimeError> {
+    fn define(&mut self, name: impl AsRef<str>, env_id: usize, value: LoxValue) -> Result<(), RuntimeError> {
         self.environments[env_id].values.insert(name.as_ref().to_owned(), value);
         Ok(())
     }
@@ -200,9 +198,9 @@ impl<W: Write> Interpreter<W> {
         }
     }
 
-    fn push_env(&mut self) ->  usize {
+    fn push_env(&mut self, enclosing_env_id: usize) ->  usize {
         // NOTE: this will probably need to be addressed for closures
-        self.environments.push(Environment::with_enclosing(self.cur_env));
+        self.environments.push(Environment::with_enclosing(enclosing_env_id));
         self.environments.len()-1
     }
 
