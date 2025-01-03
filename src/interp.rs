@@ -759,8 +759,7 @@ mod test {
             .interpret_capture_output(
                 r"
                 fun foo() {
-                  var a = 1;
-                  for(; a < 20; a = a + 1) {
+                  for(var a = 1; a < 20; a = a + 1) {
                     if (a == 10) {
                         return a;
                     }
@@ -772,6 +771,26 @@ mod test {
             )
             .map(|s| {
                 assert_eq!(s, "10\n");
+                Ok::<(), RuntimeError>(())
+            })?
+    }
+
+    #[test]
+    fn test_functions_fib() -> Result<(), RuntimeError> {
+        // test for loop, also test that local for var is shadowed and then destroyed after loop
+        let mut do_interpreter = DoIt {};
+        do_interpreter
+            .interpret_capture_output(
+                r"
+                fun fib(n) {
+                    if (n <= 1) return n;
+                    return fib(n-2) + fib(n-1);
+                }
+                print fib(7);
+              ",
+            )
+            .map(|s| {
+                assert_eq!(s, "13\n");
                 Ok::<(), RuntimeError>(())
             })?
     }
