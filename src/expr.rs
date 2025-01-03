@@ -1,4 +1,4 @@
-use super::lex;
+use super::lex::{self, Token};
 use std::fmt::{self, Display};
 use std::io::Write;
 use std::fmt::Debug;
@@ -12,6 +12,8 @@ pub enum Stmt {
     Block(Block),
     If(IfStmt),
     While(WhileStmt),
+    Function(FunctionStmt),
+    ParseError,
 }
 
 pub trait StmtVisitor<R> {
@@ -57,7 +59,15 @@ impl StmtVisitor<String> for PrintVisitor {
                 format!("(while {} {})",
                 print_visitor.visit_expr(&while_stmt.condition),
                 print_visitor.visit_stmt(&while_stmt.body))
-            }
+            },
+            Stmt::Function(function) => {
+                let mut params = String::new();
+                for a in &function.params {
+                    params = format!("{} {}",params, a.lexeme);
+                }
+                format!("(func_decl {} {} ...) ", function.name.lexeme, params)
+            },
+            Stmt::ParseError => { "Stmt::ParseError".to_string()},
         }
     }
 }
@@ -68,7 +78,7 @@ pub struct Block {
 }
 #[derive(Debug)]
 pub struct VarDecl {
-    pub name: lex::Token,
+    pub name: Token,
     pub initializer: Option<Box<Expr>>
 }
 
@@ -145,7 +155,11 @@ pub struct BinaryExpr {
     pub right: Box<Expr>,
 }
 #[derive(Debug)]
-pub struct CallExpr;
+pub struct CallExpr {
+    pub callee: Box<Expr>,
+    pub paren: lex::Token,
+    pub arguments: Vec<Box<Expr>>,
+}
 #[derive(Debug)]
 pub struct GetExpr;
 
@@ -178,7 +192,7 @@ pub struct UnaryExpr {
 }
 #[derive(Debug)]
 pub struct VariableExpr {
-    pub name: lex::Token
+    pub name: Token
 }
 
 #[derive(Debug)]
@@ -192,6 +206,13 @@ pub struct IfStmt {
 pub struct WhileStmt {
     pub condition: Box<Expr>,
     pub body: Box<Stmt>,
+}
+
+#[derive(Debug)]
+pub struct FunctionStmt {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Box<Stmt>>,
 }
 
 pub trait ExprVisitor<R> {
@@ -208,7 +229,15 @@ impl ExprVisitor<String> for PrintVisitor {
                         self.visit_expr(&b.left),
                         self.visit_expr(&b.right))
             },
-            Expr::Call(_) => { String::new()},
+            Expr::Call(call) => { 
+                let mut arguments = String::new();
+                for a in &call.arguments {
+                    arguments = format!("{}{}", &arguments, self.visit_expr(&a));
+                }
+                format!("(call {} (args: {}))", 
+                        self.visit_expr(&call.callee),
+                        arguments)
+            },
             Expr::Get(_) => {String::new()},
             Expr::Grouping(_) => {String::new()},
             Expr::Literal(lit) => {lit.val.to_string()},
@@ -255,7 +284,10 @@ impl ExprVisitor<String> for PrintVisitor {
 pub struct ErrorVisitor {
     has_error: bool
 }
-
+impl StmtVisitor<()> for ErrorVisitor {
+    fn visit_stmt(&mut self, stmt: &Stmt) {
+    }
+}
 impl ExprVisitor<()> for ErrorVisitor {
     fn visit_expr(&mut self, expr: &Expr) {
         match expr {

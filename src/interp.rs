@@ -132,6 +132,8 @@ impl Interpreter {
                 }
                 Ok(())
             },
+            Stmt::Function(ref function_stmt) => { panic!("function decl execution not implemented yet"); },
+            Stmt::ParseError => { todo!() }
         }
 
     }
@@ -312,6 +314,7 @@ fn is_truthy(loxval: &LoxValue) -> bool {
 }
 
 impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
+
     fn visit_expr(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         match expr {
             Expr::Binary(b) => {
@@ -368,7 +371,12 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 //} else {
                 //    self.environment.get(&assign_expr.name.lexeme)
                 //}
-            }
+            },
+            Expr::Call(ref call_expr) => {
+                //let callable =  call_expr.callee
+                panic!("executing function call not implemented");
+                Ok(LoxValue::Nil)
+            },
 
             a @ _ => {
                 eprintln!("unhandled expr: {:?}", a);

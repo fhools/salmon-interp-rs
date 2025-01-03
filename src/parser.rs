@@ -66,11 +66,11 @@ impl Parser {
         self.peek().token_type == TokenType::Eof
     }
 
-    fn peek(&mut self) -> &Token {
+    fn peek(&self) -> &Token {
         &self.tokens[self.current]
     }
 
-    fn consume(&mut self, tok_type: &TokenType, expected_str: &'static str) -> Result<&Token, ParseError> {
+    fn consume(&mut self, tok_type: &TokenType, expected_str: &str) -> Result<&Token, ParseError> {
         if self.check(tok_type) {
             Ok(self.advance())
         } else {
@@ -89,9 +89,25 @@ impl Parser {
            let mut print_visitor = PrintVisitor{};
            let err_print = print_visitor.visit_expr(&expr);
            println!("err print: {}", err_print);
-           Err(ParseError::General(self.previous().clone(), format!("err ast: {}", err_print)))
+           Err(ParseError::General(self.peek().clone(), format!("err ast: {}", err_print)))
        } else {
            Ok(Box::new(expr))
+       }
+    }
+
+    fn check_parse_error_stmt(&self, stmt: Stmt) -> Result<Box<Stmt>, ParseError> {
+       let mut error_visitor = ErrorVisitor::new();
+       error_visitor.visit_stmt(&stmt);
+       let mut print_visitor = PrintVisitor{};
+       let out = print_visitor.visit_stmt(&stmt);
+        eprintln!("stmt ast: {}", out);
+       if error_visitor.has_error_node() {
+           let mut print_visitor = PrintVisitor{};
+           let err_print = print_visitor.visit_stmt(&stmt);
+           println!("err print: {}", err_print);
+           Err(ParseError::General(self.peek().clone(), format!("err ast: {}", err_print)))
+       } else {
+           Ok(Box::new(stmt))
        }
     }
 
@@ -112,10 +128,13 @@ impl Parser {
 
 
     // delaration := vardecl 
+    //              | function_decl
     //              | statement 
     fn declaration(&mut self) -> Stmt {
         let stmt;
-        if self.match_any_of(&[LoxToken![Var]]) {
+        if self.match_any_of(&[LoxToken![Fun]]) {
+            stmt = self.function("function");
+        } else if self.match_any_of(&[LoxToken![Var]]) {
             stmt = self.var_declaration();
             if self.need_sync {
                 self.synchronize();
@@ -129,8 +148,39 @@ impl Parser {
         stmt
     }
    
+    // function_decl := 'fun' function 
+    fn function(&mut self, kind: &str) -> Stmt {
+        // TODO: we are using unwrap() here on the self.consume() calls to get the Token. 
+        //  this points to a design issue where none of our parsing functions are failable
+        //  so we can't use consume()? style
+        let mut params = Vec::new();
+        eprintln!("about to parse function identifier!");
+        let name = self.consume(&LoxToken![Identifier("".to_string())], &format!("expecting {} name", kind)).unwrap().clone();
+        eprintln!("parsed pass function identifier!");
+        self.consume(&LoxToken![LeftParen], &format!("expecting '(' after {} name", kind)); 
+        if !self.check(&LoxToken![RightParen]) {
+            loop {
+                if params.len() >= 255 {
+                    let tok = self.previous().clone();
+                    self.error(&tok, "can't have more than 255 parameters");
+                }
+                let param = self.consume(&LoxToken![Identifier("".to_string())], "expect parameter name");
+                params.push(param.unwrap().clone());
+                if !self.match_any_of(&[LoxToken![Comma]]) {
+                    break;
+                }
+            }
+        }
+        self.consume(&LoxToken![RightParen], "expecting ')' after parameters");
+        self.consume(&LoxToken![LeftBrace], &format!("expecting '{{' before {} body", kind));
+        let mut body = self.block();
+        if let Stmt::Block(Block{statements}) = body {
+            Stmt::Function(FunctionStmt{name: name, params, body: statements.into_iter().map(Box::new).collect()})
+        } else {
+            Stmt::ParseError
+        }
+    }
     // var_declaration := VAR "=" expression
-    
     fn var_declaration(&mut self) -> Stmt {
         // TODO: Note this is a kludge, consume's check of Identifier does not check the value of identifier so it
         // works
@@ -391,16 +441,51 @@ impl Parser {
         expr
     }
 
-    // unary := ("!" | "-") unary 
-    //        |  primary
+    // unary :=   ("!" | "-") unary 
+    //          | call;
     fn unary(&mut self) -> Box<Expr> {
         if self.match_any_of(&[LoxToken![Bang], LoxToken![Minus]]) {
             let op = self.previous().clone();
             let expr = self.unary();
             Box::new(Expr::Unary(UnaryExpr{ op, expr }))
         } else {
-            return self.primary();
+            return self.call();
         }
+    }
+
+    // call := primary ( "(" arguments? ")" )* 
+    fn call(&mut self) -> Box<Expr> {
+        // this is interesting parsing trick, if there are no () suffix, its just a 
+        // regular primary expression not a call expression
+        let mut expr = self.primary();
+        loop {
+            // if we find a ( next then it must be a call
+            if self.match_any_of(&[LoxToken![LeftParen]]) {
+                expr = self.finish_call(expr);
+            } else {
+                break;
+            }
+        }
+        expr
+    }
+    
+    // gathers up arguments and packages it up into Expr::Call instance
+    fn finish_call(&mut self, callee: Box<Expr>) -> Box<Expr> {
+        let mut arguments = Vec::new();
+        if !self.check(&LoxToken![RightParen]) {
+            loop {
+                arguments.push(self.expression());
+                if arguments.len() > 255 {
+                    let tok = self.peek().clone();
+                    self.error(&tok, "can't have more than 255 arguments for function call");
+                }
+                if !self.match_any_of(&[LoxToken![Comma]]) {
+                    break;
+                }
+            }
+        }
+        let paren_tok = self.consume(&LoxToken![RightParen], "expected ')' after arguments").unwrap();
+        Box::new(Expr::Call(CallExpr{ callee, paren: paren_tok.clone(), arguments}))
     }
 
     // primary := NUMBER | STRING | "true" | "false" | "nil" 
@@ -489,6 +574,12 @@ pub fn do_expr(source: impl Into<String>) -> Result<Box<Expr>, ParseError> {
     parser.check_parse_error(*expr)
 }
 
+pub fn do_decl(source: impl Into<String>) -> Result<Box<Stmt>, ParseError> {
+    let mut parser = Parser::new(&gen_tokens(source.into().as_str()));
+    let stmt = parser.declaration();
+    parser.check_parse_error_stmt(stmt)
+}
+
 mod test {
 
     use super::super::lex::{Scanner, TokenType, gen_tokens};
@@ -560,6 +651,16 @@ mod test {
                 "error".to_string()
             });
         assert_eq!(expr, "(+ (+ (+ 1 2) 3) (- 4))");
+    }
+
+    #[test]
+    fn test_parse_function_expr() {
+        let expr = do_decl("fun foo(a1, a2) { }")
+            .map(|expr| expr.to_string())
+            .unwrap_or_else(|_| {
+                "error".to_string()
+            });
+        assert_ne!(expr, "error");
     }
 }
 
