@@ -173,12 +173,8 @@ impl Parser {
         }
         self.consume(&LoxToken![RightParen], "expecting ')' after parameters");
         self.consume(&LoxToken![LeftBrace], &format!("expecting '{{' before {} body", kind));
-        let mut body = self.block();
-        if let Stmt::Block(Block{statements}) = body {
-            Stmt::Function(FunctionStmt{name: name, params, body: statements.into_iter().map(Box::new).collect()})
-        } else {
-            Stmt::ParseError
-        }
+        let body = self.block();
+        Stmt::Function(FunctionStmt{name, params, body})
     }
     // var_declaration := VAR "=" expression
     fn var_declaration(&mut self) -> Stmt {
@@ -219,7 +215,7 @@ impl Parser {
         } else if self.match_any_of(&[LoxToken![Print]]) {
             self.print_statement()
         } else if self.match_any_of(&[LoxToken![LeftBrace]]) {
-            self.block()
+            Stmt::Block(Block{statements: self.block()})
         } else {
             self.expression_statement()
         }
@@ -305,13 +301,13 @@ impl Parser {
     }
 
     // block := "{" declaration * "}"
-    fn block(&mut self) -> Stmt {
+    fn block(&mut self) -> Vec<Stmt> {
         let mut statements = Vec::new();
         while !self.check(&LoxToken![RightBrace]) && !self.is_at_end() {
             statements.push(self.declaration())
         }
         self.consume(&LoxToken![RightBrace], "expected right brace closing block");
-        Stmt::Block(Block{ statements })
+        statements 
     }
 
     // print_statement := expression ';'

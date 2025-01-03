@@ -4,7 +4,7 @@ use std::io::Write;
 use std::fmt::Debug;
 use super::interp::{RuntimeError, Interpreter};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expression(Box<Expr>),
     Print(Box<Expr>),
@@ -72,17 +72,17 @@ impl StmtVisitor<String> for PrintVisitor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Block {
     pub statements: Vec<Stmt> 
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VarDecl {
     pub name: Token,
     pub initializer: Option<Box<Expr>>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Binary(BinaryExpr),
     Call(CallExpr),
@@ -113,9 +113,27 @@ pub enum LoxValue {
 }
 
 pub trait LoxCallable : Debug {
-    fn call(&self, interpreter: &mut Interpreter, env_id: usize);
+    fn call(&self, interpreter: &mut Interpreter, env_id: usize) -> Result<LoxValue, RuntimeError>;
     fn clone_box(&self) -> Box<dyn LoxCallable>;
 }
+
+#[derive(Debug)]
+pub struct LoxFunction {
+    // TODO: should I store this as a Box<Stmt> instead?
+    pub function: Box<FunctionStmt>,
+}
+
+impl LoxCallable for LoxFunction {
+    fn call(&self, interpreter: &mut Interpreter, env_id: usize) -> Result<LoxValue, RuntimeError> {
+        interpreter.execute_block(&self.function.body, env_id);
+        Ok(LoxValue::Nil)
+    }
+
+    fn clone_box(&self) -> Box<dyn LoxCallable> {
+        Box::new(LoxFunction{function: self.function.clone()})
+    }
+}
+
 impl ToString for LoxValue {
     fn to_string(&self) -> String {
         match self {
@@ -142,77 +160,77 @@ impl Display for Stmt {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AssignExpr {
     pub name: lex::Token,
     pub value: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryExpr {
     pub left: Box<Expr>,
     pub op: lex::Token,
     pub right: Box<Expr>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CallExpr {
     pub callee: Box<Expr>,
     pub paren: lex::Token,
     pub arguments: Vec<Box<Expr>>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GetExpr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GroupingExpr {
     pub group: Box<Expr>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LiteralExpr {
    pub val: LoxValue
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LogicalExpr {
     pub left: Box<Expr>,
     pub op: lex::Token,
     pub right: Box<Expr>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SetExpr;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SuperExpr;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ThisExpr;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnaryExpr {
     pub op: lex::Token,
     pub expr: Box<Expr>
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VariableExpr {
     pub name: Token
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IfStmt {
     pub conditional: Box<Expr>,
     pub then_branch: Box<Stmt>,
     pub else_branch: Option<Box<Stmt>>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhileStmt {
     pub condition: Box<Expr>,
     pub body: Box<Stmt>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionStmt {
     pub name: Token,
     pub params: Vec<Token>,
-    pub body: Vec<Box<Stmt>>,
+    pub body: Vec<Stmt>,
 }
 
 pub trait ExprVisitor<R> {

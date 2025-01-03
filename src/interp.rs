@@ -65,11 +65,12 @@ impl Interpreter {
         self.visit_expr(expr)
     }
 
-    pub fn interpret(&mut self, statements: &Vec<Stmt>) -> Result<(), RuntimeError> {
+    pub fn interpret(&mut self, statements: &Vec<Stmt>) -> Result<LoxValue, RuntimeError> {
+        let mut result = Err(RuntimeError::General("intpret fail")); 
         for stmt in statements {
-            self.execute(stmt)?;
+            result = self.execute(stmt);
         }
-        Ok(())
+        result
     }
 
     fn print_statement_output(&mut self, msg: &str) -> io::Result<()> {
@@ -77,15 +78,15 @@ impl Interpreter {
         writeln!(self.out, "{}", msg)
     }
 
-    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: &Stmt) -> Result<LoxValue, RuntimeError> {
         match stmt {
-            Stmt::Expression(expr) => self.evaluate(expr).map_or_else(Err, |_v| Ok(())),
+            Stmt::Expression(expr) => self.evaluate(expr).map_or_else(Err, |v| Ok(v)),
             Stmt::Print(expr) => {
                 let loxval = self.evaluate(expr);
                 match loxval {
                     Ok(loxval) => {
                         self.print_statement_output(loxval.to_string().as_ref())?; 
-                        Ok(())
+                        Ok(loxval)
                     }
                     Err(err) => {
                         println!("runtime error: {:?}", err);
@@ -108,8 +109,8 @@ impl Interpreter {
                     // unwrap will return LoxValue or nil if Option None
                     .unwrap_or(LoxValue::Nil);
                 //eprintln!("declaring var: {} value: {}", name, lox_value.to_string());
-                self.define(name, self.cur_env, lox_value)?;
-                Ok(())
+                self.define(name, self.cur_env, lox_value.clone())?;
+                Ok(lox_value)
             }
 
             Stmt::Block(ref block) => self.execute_block(&block.statements, self.cur_env),
@@ -117,11 +118,12 @@ impl Interpreter {
             Stmt::If(ref if_stmt) => {
                 let lox_val = self.evaluate(&if_stmt.conditional)?;
                 if is_truthy(&lox_val) {
-                    self.execute(&if_stmt.then_branch)?;
+                    return self.execute(&if_stmt.then_branch)
                 } else if let Some(ref else_branch) = if_stmt.else_branch {
-                    self.execute(else_branch)?;
+                    return self.execute(else_branch)
+                } else {
+                    return Ok(LoxValue::Nil);
                 }
-                Ok(())
             },
 
             Stmt::While(ref while_stmt) => {
@@ -130,7 +132,7 @@ impl Interpreter {
                     self.execute(&while_stmt.body)?;
                     lox_val = self.evaluate(&while_stmt.condition)?;
                 }
-                Ok(())
+                Ok(LoxValue::Nil)
             },
             Stmt::Function(ref function_stmt) => { panic!("function decl execution not implemented yet"); },
             Stmt::ParseError => { todo!() }
@@ -138,14 +140,16 @@ impl Interpreter {
 
     }
 
-    fn execute_block(&mut self, stmts: &Vec<Stmt>, enclosing_env_id: usize) -> Result<(), RuntimeError> {
+    pub fn execute_block(&mut self, stmts: &Vec<Stmt>, enclosing_env_id: usize) -> Result<LoxValue, RuntimeError> {
         // save off Interpreters prior environment
         let previous = self.cur_env;
         
         let new_env = self.push_env(enclosing_env_id);
         self.cur_env = new_env;
 
-        let mut result = Ok(());
+        // TODO: what should the default value be for execute_block? currently it maybe the last
+        // value of last statement executed
+        let mut result = Ok(LoxValue::Nil);
         for s in stmts {
             result = self.execute(s);
             if result.is_err() {
@@ -421,7 +425,7 @@ mod test {
     struct DoIt {}
 
     impl DoIt {
-        fn interpret(&mut self, source: &str) -> Result<(), RuntimeError> {
+        fn interpret(&mut self, source: &str) -> Result<LoxValue, RuntimeError> {
             let mut parser = Parser::new(&gen_tokens(source));
             let stmts = parser.parse()?;
             let mut interpreter = Interpreter::new();
