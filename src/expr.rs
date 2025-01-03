@@ -113,7 +113,7 @@ pub enum LoxValue {
 }
 
 pub trait LoxCallable : Debug {
-    fn call(&self, interpreter: &mut Interpreter, env_id: usize) -> Result<LoxValue, RuntimeError>;
+    fn call(&self, interpreter: &mut Interpreter, arguments: &Vec<LoxValue>) -> Result<LoxValue, RuntimeError>;
     fn clone_box(&self) -> Box<dyn LoxCallable>;
 }
 
@@ -124,8 +124,15 @@ pub struct LoxFunction {
 }
 
 impl LoxCallable for LoxFunction {
-    fn call(&self, interpreter: &mut Interpreter, env_id: usize) -> Result<LoxValue, RuntimeError> {
-        interpreter.execute_block(&self.function.body, env_id);
+    fn call(&self, interp: &mut Interpreter, arguments: &Vec<LoxValue>) -> Result<LoxValue, RuntimeError> {
+        let global_env = interp.global_env_id();
+        let call_env = interp.push_env(global_env);
+        for (i,arg) in arguments.iter().enumerate() {
+            interp.define(&self.function.params.get(i).unwrap().lexeme, call_env, arg.clone());
+        }
+        interp.execute_block(&self.function.body, call_env);
+        // FIXME: buggy, a call may return closure, maybe we should never even pop env
+        interp.pop_env();
         Ok(LoxValue::Nil)
     }
 

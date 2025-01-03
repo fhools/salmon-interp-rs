@@ -17,6 +17,8 @@ impl<T: Write + Any> WriteAny for T {
     }
 }
 pub struct Interpreter {
+
+    // there is always 1 environment allocated at the start with id 0 which is the global env
     pub environments: Vec<Environment>,
     pub cur_env: usize,
     out: Box<AnyWrite>,
@@ -61,6 +63,9 @@ impl Interpreter {
         }
     }
 
+    pub fn global_env_id(&self) -> usize {
+        0
+    }
     fn evaluate(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         self.visit_expr(expr)
     }
@@ -134,7 +139,11 @@ impl Interpreter {
                 }
                 Ok(LoxValue::Nil)
             },
-            Stmt::Function(ref function_stmt) => { panic!("function decl execution not implemented yet"); },
+            Stmt::Function(ref function_stmt) => { 
+                let loxval = LoxValue::Function(Box::new(LoxFunction{ function: Box::new(function_stmt.clone())}));
+                self.define(&function_stmt.name.lexeme, self.cur_env, loxval);
+                Ok(LoxValue::Nil)
+            },
             Stmt::ParseError => { todo!() }
         }
 
@@ -196,7 +205,7 @@ impl Interpreter {
         )))
     }
 
-    fn define(&mut self, name: impl AsRef<str>, env_id: usize, value: LoxValue) -> Result<(), RuntimeError> {
+    pub fn define(&mut self, name: impl AsRef<str>, env_id: usize, value: LoxValue) -> Result<(), RuntimeError> {
         self.environments[env_id].values.insert(name.as_ref().to_owned(), value);
         Ok(())
     }
@@ -217,13 +226,13 @@ impl Interpreter {
         }
     }
 
-    fn push_env(&mut self, enclosing_env_id: usize) ->  usize {
+    pub fn push_env(&mut self, enclosing_env_id: usize) ->  usize {
         // NOTE: this will probably need to be addressed for closures
         self.environments.push(Environment::with_enclosing(enclosing_env_id));
         self.environments.len()-1
     }
 
-    fn pop_env(&mut self) {
+    pub fn pop_env(&mut self) {
         self.environments.pop();
     }
     pub fn get_buffer_contents(&mut self) -> Option<String> {
@@ -377,9 +386,20 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 //}
             },
             Expr::Call(ref call_expr) => {
-                //let callable =  call_expr.callee
-                panic!("executing function call not implemented");
-                Ok(LoxValue::Nil)
+                let callee = self.evaluate(&call_expr.callee)?;
+                let mut arguments = Vec::new();
+                for expr in &call_expr.arguments {
+                    let arg = self.evaluate(expr)?;
+                    arguments.push(arg.clone());
+                }
+                match callee {
+                    LoxValue::Function(ref callable) => {
+                        callable.call(self, &arguments)
+                    },
+                    _ => {
+                        Err(RuntimeError::General("callee expression is not callable"))
+                    }
+                }
             },
 
             a @ _ => {
@@ -654,6 +674,26 @@ mod test {
             )
             .map(|s| {
                 assert_eq!(s, "1\n2\n3\n4\n10\n");
+                Ok::<(), RuntimeError>(())
+            })?
+    }
+
+    #[test]
+    fn test_basic_function() -> Result<(), RuntimeError> {
+        // test for loop, also test that local for var is shadowed and then destroyed after loop
+        let mut do_interpreter = DoIt {};
+        do_interpreter
+            .interpret_capture_output(
+                r"
+                fun foo() {
+                  var a = 100;
+                  print a;
+                }
+                foo();
+              ",
+            )
+            .map(|s| {
+                assert_eq!(s, "100\n");
                 Ok::<(), RuntimeError>(())
             })?
     }
