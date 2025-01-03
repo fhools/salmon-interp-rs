@@ -146,7 +146,11 @@ impl Interpreter {
                 Ok(LoxValue::Nil)
             },
             Stmt::Function(ref function_stmt) => { 
-                let loxval = LoxValue::Function(Box::new(LoxFunction{ function: Box::new(function_stmt.clone())}));
+                let closure_id = self.push_env(self.cur_env);
+                let new_function = LoxFunction{ 
+                    function: Box::new(function_stmt.clone()), 
+                    closure: closure_id};
+                let loxval = LoxValue::Function(Box::new(new_function));
                 self.define(&function_stmt.name.lexeme, self.cur_env, loxval);
                 Ok(LoxValue::Nil)
             },
@@ -255,7 +259,9 @@ impl Interpreter {
     }
 
     pub fn pop_env(&mut self) {
-        self.environments.pop();
+        // FIXME: we are implementing closures, so we cannot actually destroy any Environments
+        // so this pop_env does a no-op
+        //self.environments.pop();
     }
     pub fn get_buffer_contents(&mut self) -> Option<String> {
         // this is courtesy of chatgpt for this tricky part
@@ -791,6 +797,32 @@ mod test {
             )
             .map(|s| {
                 assert_eq!(s, "13\n");
+                Ok::<(), RuntimeError>(())
+            })?
+    }
+
+    #[test]
+    fn test_closures() -> Result<(), RuntimeError> {
+        // test for loop, also test that local for var is shadowed and then destroyed after loop
+        let mut do_interpreter = DoIt {};
+        do_interpreter
+            .interpret_capture_output(
+                r"
+                fun makeCounter() {
+                  var i = 0;
+                  fun count() {
+                    i = i + 1;
+                    print i;
+                  }
+                  return count;
+                }
+                var counter = makeCounter();
+                counter();
+                counter();
+              ",
+            )
+            .map(|s| {
+                assert_eq!(s, "1\n2\n");
                 Ok::<(), RuntimeError>(())
             })?
     }

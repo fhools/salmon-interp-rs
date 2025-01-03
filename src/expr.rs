@@ -136,12 +136,13 @@ pub trait LoxCallable : Debug {
 pub struct LoxFunction {
     // TODO: should I store this as a Box<Stmt> instead?
     pub function: Box<FunctionStmt>,
+    pub closure: usize,
 }
 
 impl LoxCallable for LoxFunction {
     fn call(&self, interp: &mut Interpreter, arguments: &Vec<LoxValue>) -> Result<LoxValue, RuntimeError> {
-        let global_env = interp.global_env_id();
-        let call_env = interp.push_env(global_env);
+        //let global_env = interp.global_env_id();
+        let call_env = interp.push_env(self.closure);
         for (i,arg) in arguments.iter().enumerate() {
             interp.define(&self.function.params.get(i).unwrap().lexeme, call_env, arg.clone());
         }
@@ -156,7 +157,8 @@ impl LoxCallable for LoxFunction {
     }
 
     fn clone_box(&self) -> Box<dyn LoxCallable> {
-        Box::new(LoxFunction{function: self.function.clone()})
+        // TODO: implement LoxFunction Clone
+        Box::new(LoxFunction{function: self.function.clone(), closure: self.closure})
     }
 }
 
