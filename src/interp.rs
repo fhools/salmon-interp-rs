@@ -26,7 +26,7 @@ pub struct Interpreter {
 
 #[derive(Default, Debug)]
 pub struct Environment {
-    // enclosing_env is an index id  id the environments vector
+    // enclosing_env is an index id  into the Interpreter::environments vector
     pub enclosing_env: Option<usize>,
     pub values: HashMap<String, LoxValue>,
 }
@@ -404,8 +404,8 @@ fn is_truthy(loxval: &LoxValue) -> bool {
 impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
 
     fn visit_expr(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
-        match expr {
-            Expr::Binary(b) => {
+        match &expr.kind {
+            ExprKind::Binary(b) => {
                 let op_fn = to_op_fn(b.op.token_type.clone());
                 let lvalue = self.visit_expr(&b.left);
                 let rvalue = self.visit_expr(&b.right);
@@ -415,9 +415,9 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                     _ => Err(RuntimeError::General("binary op failed on values")),
                 }
             }
-            Expr::Logical(logical_expr) => self.visit_logical_expr(expr),
-            Expr::Literal(lit) => Ok(lit.val.clone()),
-            Expr::Unary(UnaryExpr { op, ref expr }) => {
+            ExprKind::Logical(logical_expr) => self.visit_logical_expr(expr),
+            ExprKind::Literal(lit) => Ok(lit.val.clone()),
+            ExprKind::Unary(UnaryExpr { op, ref expr }) => {
                 let loxval = self.visit_expr(expr);
                 //eprintln!("visit_expr unary op: {:?} inner expr: {:?}", op, loxval);
                 match (&op.token_type, loxval) {
@@ -426,7 +426,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                     _ => Err(RuntimeError::General("unary error")),
                 }
             }
-            Expr::Variable(VariableExpr { ref name }) => {
+            ExprKind::Variable(VariableExpr { ref name }) => {
                 self.get(&name.lexeme,self.cur_env, 0).map_err(|_err| {
                     eprintln!("unfound variable: {}", name);
                     RuntimeError::General(Box::leak(
@@ -434,7 +434,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                     ))
                 })
             }
-            Expr::Assign(ref assign_expr) => {
+            ExprKind::Assign(ref assign_expr) => {
                 let loxval = self.evaluate(&assign_expr.value)?;
                 self.assign(&assign_expr.name.lexeme, self.cur_env, loxval.clone(), 0)?;
                 Ok(loxval)
@@ -460,7 +460,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 //    self.environment.get(&assign_expr.name.lexeme)
                 //}
             },
-            Expr::Call(ref call_expr) => {
+            ExprKind::Call(ref call_expr) => {
                 let callee = self.evaluate(&call_expr.callee)?;
                 let mut arguments = Vec::new();
                 for expr in &call_expr.arguments {
@@ -489,8 +489,8 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
     }
 
     fn visit_logical_expr(&mut self, expr: &Expr) -> Result<LoxValue, RuntimeError> {
-        match expr {
-            Expr::Logical(logical_expr) => {
+        match &expr.kind {
+            ExprKind::Logical(logical_expr) => {
                 let left_val = self.evaluate(&logical_expr.left)?;
                 let is_or = logical_expr.op.token_type == TokenType::Or;
 

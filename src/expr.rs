@@ -2,6 +2,7 @@ use super::lex::{self, Token};
 use std::fmt::{self, Display};
 use std::io::Write;
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use super::interp::{RuntimeError, Interpreter};
 
 #[derive(Debug, Clone)]
@@ -90,8 +91,23 @@ pub struct VarDecl {
     pub initializer: Option<Box<Expr>>
 }
 
+
+// Used to generate ids for Expr
+static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+pub fn generate_expr_id() -> usize {
+    NEXT_ID.fetch_add(1, Ordering::SeqCst)
+}
+pub fn new_expr(exprkind: ExprKind) -> Expr {
+    Expr { id: generate_expr_id(), kind: exprkind}
+}
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub struct Expr {
+    pub id: usize,
+    pub kind: ExprKind
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprKind {
     Binary(BinaryExpr),
     Call(CallExpr),
     Get(GetExpr),
@@ -276,14 +292,14 @@ pub trait ExprVisitor<R> {
 
 impl ExprVisitor<String> for PrintVisitor {
     fn visit_expr(&mut self, expr: &Expr) -> String {
-        match expr {
-            Expr::Binary(b) => {
+        match &expr.kind{
+            ExprKind::Binary(b) => {
                 format!("({} {} {})",
                         b.op.lexeme,
                         self.visit_expr(&b.left),
                         self.visit_expr(&b.right))
             },
-            Expr::Call(call) => { 
+            ExprKind::Call(call) => { 
                 let mut arguments = String::new();
                 for a in &call.arguments {
                     arguments = format!("{}{}", &arguments, self.visit_expr(&a));
@@ -292,35 +308,35 @@ impl ExprVisitor<String> for PrintVisitor {
                         self.visit_expr(&call.callee),
                         arguments)
             },
-            Expr::Get(_) => {String::new()},
-            Expr::Grouping(_) => {String::new()},
-            Expr::Literal(lit) => {lit.val.to_string()},
-            Expr::Logical(logical_expr) => {
+            ExprKind::Get(_) => {String::new()},
+            ExprKind::Grouping(_) => {String::new()},
+            ExprKind::Literal(lit) => {lit.val.to_string()},
+            ExprKind::Logical(logical_expr) => {
                 self.visit_logical_expr(expr)
             }
-            Expr::Set(SetExpr) => {String::new()},
-            Expr::Super(SuperExpr) => {String::new()},
-            Expr::This(ThisExpr) => {String::new()},
-            Expr::Unary(unary) => {
+            ExprKind::Set(SetExpr) => {String::new()},
+            ExprKind::Super(SuperExpr) => {String::new()},
+            ExprKind::This(ThisExpr) => {String::new()},
+            ExprKind::Unary(unary) => {
                 format!("({} {})", 
                         unary.op.lexeme,
                         self.visit_expr(&unary.expr))
             },
-            Expr::Variable(var_expr) => {
+            ExprKind::Variable(var_expr) => {
                 // TODO: look up variable in environment and visit the expression value
                 format!("{}", var_expr.name.lexeme)
             },
-            Expr::Assign(assign_expr) => {
+            ExprKind::Assign(assign_expr) => {
                 format!("(assign {} {})", assign_expr.name.lexeme, self.visit_expr(&assign_expr.value))
             },
-            Expr::ParseError => "parse_error".to_string()
+            ExprKind::ParseError => "parse_error".to_string()
         }
 
     }
 
     fn visit_logical_expr(&mut self, expr: &Expr) -> String {
-        match expr {
-            Expr::Logical(l) => {
+        match &expr.kind {
+            ExprKind::Logical(l) => {
                 format!("({} {} {})",
                 l.op.lexeme,
                 self.visit_expr(&l.left),
@@ -344,35 +360,35 @@ impl StmtVisitor<()> for ErrorVisitor {
 }
 impl ExprVisitor<()> for ErrorVisitor {
     fn visit_expr(&mut self, expr: &Expr) {
-        match expr {
-            Expr::Binary(b) => {
+        match &expr.kind {
+            ExprKind::Binary(b) => {
                 self.visit_expr(&b.left);
                 self.visit_expr(&b.right);
             },
-            Expr::Call(_) => { },
-            Expr::Get(_) => {},
-            Expr::Grouping(grp) => {
+            ExprKind::Call(_) => { },
+            ExprKind::Get(_) => {},
+            ExprKind::Grouping(grp) => {
                 self.visit_expr(&grp.group);
             },
-            Expr::Literal(_lit) => {},
-            Expr::Logical(logical_expr) => {
+            ExprKind::Literal(_lit) => {},
+            ExprKind::Logical(logical_expr) => {
                 self.visit_logical_expr(expr);
             },
-            Expr::Set(SetExpr) => {},
-            Expr::Super(SuperExpr) => {},
-            Expr::This(ThisExpr) => {},
-            Expr::Unary(_unary) => {},
-            Expr::Variable(VariableExpr) => {},
-            Expr::Assign(_) => {},
-            Expr::ParseError =>  {
+            ExprKind::Set(SetExpr) => {},
+            ExprKind::Super(SuperExpr) => {},
+            ExprKind::This(ThisExpr) => {},
+            ExprKind::Unary(_unary) => {},
+            ExprKind::Variable(VariableExpr) => {},
+            ExprKind::Assign(_) => {},
+            ExprKind::ParseError =>  {
                 self.has_error = true;
             }
         }
     }
 
     fn visit_logical_expr(&mut self, expr: &Expr) -> () {
-        match expr {
-            Expr::Logical(logical_expr) => {
+        match &expr.kind {
+            ExprKind::Logical(logical_expr) => {
                 self.visit_expr(&logical_expr.left);
                 self.visit_expr(&logical_expr.right);
             },
@@ -401,11 +417,17 @@ mod test {
 
     #[test]
     fn print_expr() {
-        let bexpr = Expr::Binary(BinaryExpr{ 
-            left: Box::new(Expr::Literal(LiteralExpr{val: lox_num(1.0)})),
-            op: lex::Token::new(TokenType::Plus, "+".to_string(), 0),
-            right: Box::new(Expr::Literal(LiteralExpr{val: lox_num(2.0)})),
-        });
+        let bexpr = Expr{ 
+            id: generate_expr_id(),
+            kind: ExprKind::Binary(BinaryExpr{ 
+                left: Box::new(Expr{ id: generate_expr_id(),
+                    kind: ExprKind::Literal(LiteralExpr{val: lox_num(1.0)
+                    })}),
+                op: lex::Token::new(TokenType::Plus, "+".to_string(), 0),
+               right: Box::new(Expr { id: generate_expr_id(), 
+                        kind: ExprKind::Literal(LiteralExpr{val: lox_num(2.0)})})
+                                  })};
+                    
         let mut visitor =  PrintVisitor{};
         let output = visitor.visit_expr(&bexpr);
         assert!(!output.is_empty());

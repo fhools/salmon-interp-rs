@@ -273,7 +273,7 @@ impl Parser {
         if !self.check(&LoxToken![Semicolon]) {
             condition = Some(self.expression());
         } else {
-            condition = Some(Box::new(Expr::Literal(LiteralExpr{val: LoxValue::Bool(true)})));
+            condition = Some(Box::new(new_expr(ExprKind::Literal(LiteralExpr{val: LoxValue::Bool(true)}))));
         }
         self.consume(&LoxToken![Semicolon], "expected ';' after condition for 'for'");
 
@@ -367,14 +367,14 @@ impl Parser {
         if self.match_any_of(&[LoxToken![Equal]]) {
             let equals_tok = self.previous().clone();
             let value = self.assignment();
-            match *expr {
-                Expr::Variable(var) => {
-                    Box::new(Expr::Assign(AssignExpr{name: var.name, value}))
+            match &expr.kind {
+                ExprKind::Variable(var) => {
+                    Box::new(new_expr(ExprKind::Assign(AssignExpr{name: var.name.clone(), value})))
                 },
                 _ => {
                     eprintln!("invalid lvalue for var assignment");
                     self.error(&equals_tok, "invalid lvalue for var assignment");
-                    Box::new(Expr::ParseError)
+                    Box::new(new_expr(ExprKind::ParseError))
                 }
             }
         } else {
@@ -388,7 +388,7 @@ impl Parser {
         while self.match_any_of(&[LoxToken![Or]]) {
            let op = self.previous().clone();
            let right_expr = self.logical_and(); 
-           expr = Box::new(Expr::Logical(LogicalExpr { left: expr, op, right: right_expr }));
+           expr = Box::new(new_expr(ExprKind::Logical(LogicalExpr { left: expr, op, right: right_expr })));
         }
         expr
     }
@@ -399,7 +399,7 @@ impl Parser {
         while self.match_any_of(&[LoxToken![And]]) {
            let op = self.previous().clone();
            let right_expr = self.equality(); 
-           expr = Box::new(Expr::Logical(LogicalExpr { left: expr, op, right: right_expr }));
+           expr = Box::new(new_expr(ExprKind::Logical(LogicalExpr { left: expr, op, right: right_expr })));
         }
         expr
     }
@@ -410,7 +410,7 @@ impl Parser {
         while self.match_any_of(&[LoxToken![BangEqual], LoxToken![EqualEqual]]) {
             let op = self.previous().clone();
             let right_expr = self.comparison();
-            expr = Box::new(Expr::Binary(BinaryExpr{ left: expr, op, right: right_expr}));
+            expr = Box::new(new_expr(ExprKind::Binary(BinaryExpr{ left: expr, op, right: right_expr})));
         }
         expr
     }
@@ -423,7 +423,7 @@ impl Parser {
                                   LoxToken![Less], LoxToken![LessEqual]]) {
             let op = self.previous().clone();
             let right_expr = self.term();
-            expr = Box::new(Expr::Binary(BinaryExpr{ left: expr, op, right: right_expr}));
+            expr = Box::new(new_expr(ExprKind::Binary(BinaryExpr{ left: expr, op, right: right_expr})));
         }
         expr
     }
@@ -435,7 +435,7 @@ impl Parser {
                                   LoxToken![Minus]]) {
             let op = self.previous().clone();
             let right_expr = self.factor();
-            expr = Box::new(Expr::Binary(BinaryExpr{ left: expr, op, right: right_expr}));
+            expr = Box::new(new_expr(ExprKind::Binary(BinaryExpr{ left: expr, op, right: right_expr})));
         }
         expr
     }
@@ -447,7 +447,7 @@ impl Parser {
                                   LoxToken![Star]]) {
             let op = self.previous().clone();
             let right_expr = self.unary();
-            expr = Box::new(Expr::Binary(BinaryExpr{ left: expr, op, right: right_expr}));
+            expr = Box::new(new_expr(ExprKind::Binary(BinaryExpr{ left: expr, op, right: right_expr})));
         }
         expr
     }
@@ -458,7 +458,7 @@ impl Parser {
         if self.match_any_of(&[LoxToken![Bang], LoxToken![Minus]]) {
             let op = self.previous().clone();
             let expr = self.unary();
-            Box::new(Expr::Unary(UnaryExpr{ op, expr }))
+            Box::new(new_expr(ExprKind::Unary(UnaryExpr{ op, expr })))
         } else {
             return self.call();
         }
@@ -496,7 +496,7 @@ impl Parser {
             }
         }
         let paren_tok = self.consume(&LoxToken![RightParen], "expected ')' after arguments").unwrap();
-        Box::new(Expr::Call(CallExpr{ callee, paren: paren_tok.clone(), arguments}))
+        Box::new(new_expr(ExprKind::Call(CallExpr{ callee, paren: paren_tok.clone(), arguments})))
     }
 
     // primary := NUMBER | STRING | "true" | "false" | "nil" 
@@ -508,35 +508,35 @@ impl Parser {
         if self.match_any_of(&[num_tok, str_tok, LoxToken![True], LoxToken![False], LoxToken![Nil]]) {
             let expr = match self.previous().token_type {
                 TokenType::Number(n) => 
-                    Expr::Literal(LiteralExpr{ val: LoxValue::Number(n) }),
+                    ExprKind::Literal(LiteralExpr{ val: LoxValue::Number(n) }),
                 TokenType::String(ref s) =>
-                    Expr::Literal(LiteralExpr{ val: LoxValue::String(s.clone()) }),
+                    ExprKind::Literal(LiteralExpr{ val: LoxValue::String(s.clone()) }),
                 TokenType::True => 
-                    Expr::Literal(LiteralExpr{ val: LoxValue::Bool(true) }),
+                    ExprKind::Literal(LiteralExpr{ val: LoxValue::Bool(true) }),
                 TokenType::False => 
-                    Expr::Literal(LiteralExpr{ val: LoxValue::Bool(false) }),
+                    ExprKind::Literal(LiteralExpr{ val: LoxValue::Bool(false) }),
                 TokenType::Nil => 
-                    Expr::Literal(LiteralExpr{ val: LoxValue::Nil}),
-                    _ => { Expr::ParseError }
+                    ExprKind::Literal(LiteralExpr{ val: LoxValue::Nil}),
+                    _ => { ExprKind::ParseError }
             };
-            Box::new(expr)
+            Box::new(new_expr(expr))
         } else if self.match_any_of(&[LoxToken![Identifier("".to_string())]]) {
-            Box::new(Expr::Variable(VariableExpr{name:self.previous().clone()}))
+            Box::new(new_expr(ExprKind::Variable(VariableExpr{name:self.previous().clone()})))
         } else if self.match_any_of(&[LoxToken![LeftParen]]) {
             let expr = self.expression();
             let result = self.consume(&LoxToken![RightParen], "expected ')' after expression");
             match result {
                 Ok(_) => {
-                    Box::new(Expr::Grouping(GroupingExpr{ group: Box::new(*expr) }))
+                    Box::new(new_expr(ExprKind::Grouping(GroupingExpr{ group: Box::new(*expr) })))
                 },
                 Err(_) => {
-                    Box::new(Expr::ParseError)
+                    Box::new(new_expr(ExprKind::ParseError))
                 }
             }
         } else {
             let tok = self.peek().to_owned();
             self.error(&tok, "parse primary fail");
-            Box::new(Expr::ParseError)
+            Box::new(new_expr(ExprKind::ParseError))
         }
     }
 
