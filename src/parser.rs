@@ -359,23 +359,27 @@ impl Parser {
         // if the VariableExpr was not followed by a equal sign then it must be just 
         // expression by itself
 
-        // this could be a var 
+        // this could be a var lvalue not just a logical
         let expr = self.logical_or();
 
+        // optionally an = for assignment
         if self.match_any_of(&[LoxToken![Equal]]) {
             let equals_tok = self.previous().clone();
             let value = self.assignment();
+
+            // verify that the expr prior to = is an lvalue
             match &expr.kind {
                 ExprKind::Variable(var) => {
                     Box::new(new_expr(ExprKind::Assign(AssignExpr{name: var.name.clone(), value})))
                 },
                 _ => {
-                    eprintln!("invalid lvalue for var assignment");
-                    self.error(&equals_tok, "invalid lvalue for var assignment");
+                    eprintln!("not an lvalue for var assignment");
+                    self.error(&equals_tok, "not lvalue for var assignment");
                     Box::new(new_expr(ExprKind::ParseError))
                 }
             }
         } else {
+        // no '=' was parsed so it must be just a logical_or expression
             expr
         }
     }

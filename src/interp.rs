@@ -1,6 +1,7 @@
 use crate::expr::*;
-use crate::lex::{Token, TokenType};
+use crate::lex::{Token, TokenType, gen_tokens};
 use crate::resolver::Resolver;
+use crate::parser::{do_expr, Parser};
 use std::collections::HashMap;
 use std::io::{self, Write, Cursor};
 use std::any::Any;
@@ -562,36 +563,38 @@ fn evaluate_expr(expr: &Expr) -> Result<LoxValue, RuntimeError> {
         Ok,
     )
 }
+
+
+// Driver for source code -> parser -> ast -> resolver -> interpret
+struct LoxInterpreter{}
+
+impl LoxInterpreter {
+    fn interpret(&mut self, source: &str) -> Result<LoxValue, RuntimeError> {
+        let mut parser = Parser::new(&gen_tokens(source));
+        let stmts = parser.parse()?;
+        let mut interpreter = Interpreter::new();
+        let mut resolver = Resolver::default();
+        resolver.resolve(&mut interpreter, &stmts);
+        interpreter.interpret(&stmts)
+    }
+
+    fn interpret_capture_output(&mut self, source: &str) -> Result<String, RuntimeError> {
+        let mut parser = Parser::new(&gen_tokens(source));
+        let stmts = parser.parse()?;
+        let mut cursor_buff = Cursor::new(Vec::new());
+        let mut interpreter = Interpreter::new_with_out(Box::new(cursor_buff));
+
+        let mut resolver = Resolver::default();
+        resolver.resolve(&mut interpreter, &stmts);
+        interpreter.interpret(&stmts);
+        let output = interpreter.get_buffer_contents();
+        output.map_or_else(|| Err(RuntimeError::General("error")), |s| Ok(s))
+    }
+}
+
 mod test {
-    use super::super::lex::gen_tokens;
-    use super::super::parser::{do_expr, Parser};
     use super::*;
 
-    struct DoIt {}
-
-    impl DoIt {
-        fn interpret(&mut self, source: &str) -> Result<LoxValue, RuntimeError> {
-            let mut parser = Parser::new(&gen_tokens(source));
-            let stmts = parser.parse()?;
-            let mut interpreter = Interpreter::new();
-            let mut resolver = Resolver::new();
-            resolver.resolve(&mut interpreter, &stmts);
-            interpreter.interpret(&stmts)
-        }
-
-        fn interpret_capture_output(&mut self, source: &str) -> Result<String, RuntimeError> {
-            let mut parser = Parser::new(&gen_tokens(source));
-            let stmts = parser.parse()?;
-            let mut cursor_buff = Cursor::new(Vec::new());
-            let mut interpreter = Interpreter::new_with_out(Box::new(cursor_buff));
-
-            let mut resolver = Resolver::new();
-            resolver.resolve(&mut interpreter, &stmts);
-            interpreter.interpret(&stmts);
-            let output = interpreter.get_buffer_contents();
-            output.map_or_else(|| Err(RuntimeError::General("error")), |s| Ok(s))
-        }
-    }
     #[test]
     fn test_evaluate_expr() {
         let expr_val = do_expr("1+2+3")
@@ -649,7 +652,7 @@ mod test {
 
     #[test]
     fn test_intepreter() {
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter.interpret(
             r"print 1 + 2;
               print 4 + 6;
@@ -660,7 +663,7 @@ mod test {
 
     #[test]
     fn test_var_decl() {
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         // TODO: change the Interpreter allow option output capture to endpoint instead
         // of just output to stdout. so that the unit test can capture the output
         do_interpreter.interpret(
@@ -677,7 +680,7 @@ mod test {
 
     #[test]
     fn test_lexical_scope() {
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter{};
         do_interpreter.interpret(
             r"var a = true;
               print a;
@@ -692,7 +695,7 @@ mod test {
 
     #[test]
     fn test_lexical_scope_out_buff() -> Result<(), RuntimeError> {
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -714,7 +717,7 @@ mod test {
 
     #[test]
     fn test_lexical_scope_shadow_out_buff() -> Result<(), RuntimeError> {
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -740,7 +743,7 @@ mod test {
 
     #[test]
     fn test_logical() -> Result<(), RuntimeError> {
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -771,7 +774,7 @@ mod test {
 
     #[test]
     fn test_while() -> Result<(), RuntimeError> {
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -793,7 +796,7 @@ mod test {
     #[test]
     fn test_for() -> Result<(), RuntimeError> {
         // test for loop, also test that local for var is shadowed and then destroyed after loop
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -814,7 +817,7 @@ mod test {
     #[test]
     fn test_basic_function() -> Result<(), RuntimeError> {
         // test for loop, also test that local for var is shadowed and then destroyed after loop
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -838,7 +841,7 @@ mod test {
     #[test]
     fn test_functions_fib() -> Result<(), RuntimeError> {
         // test for loop, also test that local for var is shadowed and then destroyed after loop
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -858,7 +861,7 @@ mod test {
     #[test]
     fn test_closures() -> Result<(), RuntimeError> {
         // test for loop, also test that local for var is shadowed and then destroyed after loop
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r"
@@ -884,7 +887,7 @@ mod test {
     #[test]
     fn test_resolver() -> Result<(), RuntimeError> {
         // test for loop, also test that local for var is shadowed and then destroyed after loop
-        let mut do_interpreter = DoIt {};
+        let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
                 r#"

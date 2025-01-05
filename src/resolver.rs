@@ -1,5 +1,5 @@
 use crate::interp::Interpreter;
-use crate::lex::{Token};
+use crate::lex::Token;
 use crate::salmon_error;
 use crate::expr::{ExprKind, Expr, Stmt, Block, FunctionStmt, ReturnStmt, WhileStmt, BinaryExpr, CallExpr, GroupingExpr, LogicalExpr, UnaryExpr};
 use std::collections::HashMap;
@@ -16,13 +16,14 @@ use std::collections::HashMap;
 pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
 }
-
-impl Resolver {
-    pub fn new() -> Self {
+impl Default for Resolver {
+    fn default() -> Self {
         Resolver {
             scopes: Vec::new()
         }
-    }
+    } 
+}
+impl Resolver {
     pub fn resolve(&mut self, interp: &mut Interpreter, stmts: &Vec<Stmt>) {
         for s in stmts {
             self.resolve_stmt(interp, s);
@@ -35,7 +36,7 @@ impl Resolver {
                 //eprintln!("variable decl {}", var_decl.name.lexeme);
                 self.declare(&var_decl.name);
                 if let Some(expr) = &var_decl.initializer {
-                    self.resolve_expr(interp, &expr);
+                    self.resolve_expr(interp, expr);
                 }
                 self.define(&var_decl.name);
             },
@@ -44,32 +45,34 @@ impl Resolver {
                 self.define(&function_stmt.name);
                 self.resolve_function(interp, function_stmt);
             },
+
             Stmt::Expression(ref expr) => {
-                self.resolve_expr(interp, &expr);
+                self.resolve_expr(interp, expr);
             },
+
             Stmt::If(ref if_stmt) => {
                 self.resolve_expr(interp, &if_stmt.conditional);
                 self.resolve_stmt(interp, &if_stmt.then_branch);
                 if let Some(ref else_branch) = if_stmt.else_branch {
-                    self.resolve_stmt(interp, &else_branch);
-                }
-            },
-            Stmt::Print(ref expr) => {
-                self.resolve_expr(interp, &expr);
-            },
-            Stmt::Return(ReturnStmt{ ref value, ..}) => {
-                if let Some(ref expr) = value {
-                    self.resolve_expr(interp,&expr);
+                    self.resolve_stmt(interp, else_branch);
                 }
             },
 
+            Stmt::Print(ref expr) => {
+                self.resolve_expr(interp, expr);
+            },
+
+            Stmt::Return(ReturnStmt{ value: Some(ref expr), ..}) => {
+                    self.resolve_expr(interp, expr);
+            },
+
             Stmt::While(WhileStmt{ ref condition, ref body }) => {
-                self.resolve_expr(interp, &condition);
-                self.resolve_stmt(interp, &body);
+                self.resolve_expr(interp, condition);
+                self.resolve_stmt(interp, body);
             },
             Stmt::Block(Block{ ref statements }) => {
                 self.begin_scope();
-                self.resolve(interp, &statements);
+                self.resolve(interp, statements);
                 self.end_scope();
             },
             _ => {}
@@ -96,24 +99,24 @@ impl Resolver {
             },
 
             ExprKind::Binary(BinaryExpr{ ref left, ref right, ..}) => {
-                self.resolve_expr(interp, &left);
-                self.resolve_expr(interp, &right);
+                self.resolve_expr(interp, left);
+                self.resolve_expr(interp, right);
             },
             ExprKind::Call(CallExpr{ref callee, ref arguments, ..}) => {
-                self.resolve_expr(interp, &callee);
+                self.resolve_expr(interp, callee);
                 for arg in arguments {
                     self.resolve_expr(interp, arg);
                 }
             },
             ExprKind::Grouping(GroupingExpr{ ref group }) => {
-                self.resolve_expr(interp, &group);
+                self.resolve_expr(interp, group);
             },
             ExprKind::Logical(LogicalExpr{ ref left, ref right, ..}) => {
-                self.resolve_expr(interp, &left);
-                self.resolve_expr(interp, &right);
+                self.resolve_expr(interp, left);
+                self.resolve_expr(interp, right);
             },
             ExprKind::Unary(UnaryExpr{ ref expr, ..}) => {
-                self.resolve_expr(interp, &expr);
+                self.resolve_expr(interp, expr);
             },
            _ => {} 
         }
@@ -178,9 +181,4 @@ impl Resolver {
         self.scopes.pop();
     }
 
-    fn visit_block_stmt(&mut self, interp: &mut Interpreter, block_stmt: &Block) {
-        self.begin_scope();
-        self.resolve(interp, &block_stmt.statements);
-        self.end_scope();
-    }
 }
