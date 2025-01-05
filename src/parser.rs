@@ -154,9 +154,7 @@ impl Parser {
         //  this points to a design issue where none of our parsing functions are failable
         //  so we can't use consume()? style
         let mut params = Vec::new();
-        eprintln!("about to parse function identifier!");
         let name = self.consume(&LoxToken![Identifier("".to_string())], &format!("expecting {} name", kind)).unwrap().clone();
-        eprintln!("parsed pass function identifier!");
         self.consume(&LoxToken![LeftParen], &format!("expecting '(' after {} name", kind)); 
         if !self.check(&LoxToken![RightParen]) {
             loop {

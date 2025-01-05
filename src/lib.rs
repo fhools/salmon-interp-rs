@@ -36,3 +36,4 @@ pub mod lex;
 pub mod parser;
 pub mod error;
 pub mod interp;
+pub mod resolver;

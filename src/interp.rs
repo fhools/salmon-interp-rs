@@ -1,5 +1,6 @@
 use crate::expr::*;
-use crate::lex::TokenType;
+use crate::lex::{Token, TokenType};
+use crate::resolver::Resolver;
 use std::collections::HashMap;
 use std::io::{self, Write, Cursor};
 use std::any::Any;
@@ -21,6 +22,11 @@ pub struct Interpreter {
     // there is always 1 environment allocated at the start with id 0 which is the global env
     pub environments: Vec<Environment>,
     pub cur_env: usize,
+    
+
+    // Locals var distance map for variable scope resolution
+    // key: expr.id var: scope distance 
+    locals: HashMap<usize, usize>,
     out: Box<AnyWrite>,
 }
 
@@ -51,6 +57,7 @@ impl Interpreter {
         Interpreter {
             environments: vec![Environment::default()],
             cur_env: 0,
+            locals: HashMap::new(),
             out: Box::new(std::io::stdout()),
         }
     }
@@ -59,6 +66,7 @@ impl Interpreter {
         Interpreter {
             environments: vec![Environment::default()],
             cur_env: 0,
+            locals: HashMap::new(),
             out: out_stream,
         }
     }
@@ -70,6 +78,20 @@ impl Interpreter {
         self.visit_expr(expr)
     }
 
+    pub fn resolve(&mut self, expr: &Expr, depth: usize) {
+        
+        self.locals.insert(expr.id, depth);
+    }
+
+    fn lookup_variable(&mut self, name: &Token, expr: &Expr) -> Result<LoxValue, RuntimeError> {
+        let distance = self.locals.get(&expr.id);
+        if let Some(distance) = distance {
+            //eprintln!("distance of {} is {} of expr: {}", name.lexeme, distance, expr.to_string());
+            self.get_at(*distance, &name.lexeme)
+        } else {
+            self.get(&name.lexeme, self.global_env_id(), 0)
+        }
+    }
     pub fn interpret(&mut self, statements: &Vec<Stmt>) -> Result<LoxValue, RuntimeError> {
         let mut result = Err(RuntimeError::General("intpret fail")); 
         for stmt in statements {
@@ -197,6 +219,23 @@ impl Interpreter {
         result
     }
 
+    fn ancestor_env_id(&mut self, distance: usize, mut this_env: usize) -> usize {
+        let mut env: &mut Environment = self.environments.get_mut(this_env).unwrap();
+        let mut i = 0;
+        while i < distance {
+            if let Some(enclosing_env_id) = env.enclosing_env {
+                this_env = enclosing_env_id;
+            }
+            i += 1;
+        }
+        this_env
+    }
+
+    fn get_at(&mut self, distance: usize, source: impl AsRef<str>) -> Result<LoxValue, RuntimeError> {
+        let ancestor_env_id = self.ancestor_env_id(distance, self.cur_env);
+        self.get(source, ancestor_env_id, 0)
+    }
+
     // DEBUG add level parameter
     fn get(&self, source: impl AsRef<str>, env_id: usize, level: usize) -> Result<LoxValue, RuntimeError> {
         let source: &str = source.as_ref();
@@ -221,6 +260,9 @@ impl Interpreter {
         if let Some(value) = self.environments[env_id].values.get(source) {
             //eprintln!("env get level: {} key: {}  val: {}", level, source, value.to_string());
             return Ok(value.clone());
+        }
+        if level == 20 {
+            panic!("too many levels");
         }
         if let Some(ref enclosing_id) = self.environments[env_id].enclosing_env {
             //eprintln!("did not find in env_id {} looking in id {}", env_id, enclosing_id);
@@ -427,12 +469,13 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 }
             }
             ExprKind::Variable(VariableExpr { ref name }) => {
-                self.get(&name.lexeme,self.cur_env, 0).map_err(|_err| {
-                    eprintln!("unfound variable: {}", name);
-                    RuntimeError::General(Box::leak(
-                        format!("undefined variable: {}", name).into_boxed_str(),
-                    ))
-                })
+                //self.get(&name.lexeme,self.cur_env, 0).map_err(|_err| {
+                //    eprintln!("unfound variable: {}", name);
+                //    RuntimeError::General(Box::leak(
+                //        format!("undefined variable: {}", name).into_boxed_str(),
+                //    ))
+                //})
+                self.lookup_variable(&name, expr)
             }
             ExprKind::Assign(ref assign_expr) => {
                 let loxval = self.evaluate(&assign_expr.value)?;
@@ -528,6 +571,8 @@ mod test {
             let mut parser = Parser::new(&gen_tokens(source));
             let stmts = parser.parse()?;
             let mut interpreter = Interpreter::new();
+            let mut resolver = Resolver::new();
+            resolver.resolve(&mut interpreter, &stmts);
             interpreter.interpret(&stmts)
         }
 
@@ -536,6 +581,9 @@ mod test {
             let stmts = parser.parse()?;
             let mut cursor_buff = Cursor::new(Vec::new());
             let mut interpreter = Interpreter::new_with_out(Box::new(cursor_buff));
+
+            let mut resolver = Resolver::new();
+            resolver.resolve(&mut interpreter, &stmts);
             interpreter.interpret(&stmts);
             let output = interpreter.get_buffer_contents();
             output.map_or_else(|| Err(RuntimeError::General("error")), |s| Ok(s))
@@ -671,10 +719,11 @@ mod test {
               var a = 10;
               print a;
               {
-                //shadow a but use a in initializer
-                var a = a + 20;
+                //shadow a but use a in initializer 
+                // var a = a + 20 not allowed anymore because of resolver
+                var b = a + 20;
                 // expected 10 + 20 = 30
-                print a;
+                print b;
               }
               print a;
               ",
@@ -696,10 +745,12 @@ mod test {
               var a = 10;
               print a;
               if (a == 11) {
-                //shadow a but use a in initializer
-                var a = a + 20;
+                //shadow a but use a in initializer 
+                // shadow not allowed anymore
+                // var a = a + 20;
+                var b = a + 20;
                 // expected 10 + 20 = 30
-                print a;
+                print b;
               } else {
                 print 2000;
               }
@@ -823,6 +874,30 @@ mod test {
             )
             .map(|s| {
                 assert_eq!(s, "1\n2\n");
+                Ok::<(), RuntimeError>(())
+            })?
+    }
+
+    #[test]
+    fn test_resolver() -> Result<(), RuntimeError> {
+        // test for loop, also test that local for var is shadowed and then destroyed after loop
+        let mut do_interpreter = DoIt {};
+        do_interpreter
+            .interpret_capture_output(
+                r#"
+                var a = "global";
+                {
+                    fun showA() {
+                        print a;
+                    }
+                    showA();
+                    var a = "block";
+                    showA();
+                }
+              "#,
+            )
+            .map(|s| {
+                assert_eq!(s, "global\nglobal\n");
                 Ok::<(), RuntimeError>(())
             })?
     }

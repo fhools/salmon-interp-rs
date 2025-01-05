@@ -1,10 +1,10 @@
 # Description
-This is a implementation of the Lox interpreter from Bob Nystrom's wonderful book Crafting Interpreters
+This is a implementation of the Lox interpreter from Bob Nystrom's wonderful book Crafting Interpreters in Rust.
 
 # Status
-Not completed yet. Last completed chapter is Chapter 10.
+Last completed chapter is Chapter 11.
 
-Still needs to add variable resolution for lexical scoping and support classes.
+Still need to add classes, inheritence.
 
 # Rustisms
 The Expr/Stmt class hierarchy is replaced by enum's. We had to use `Box<Expr>` and `Box<Stmt>` to get around
