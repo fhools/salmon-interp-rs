@@ -85,6 +85,9 @@ impl Interpreter {
 
     fn lookup_variable(&mut self, name: &Token, expr: &Expr) -> Result<LoxValue, RuntimeError> {
         let distance = self.locals.get(&expr.id);
+
+        // The scoping distance to the variable is found by the resolver after parsing, prior to
+        // execution. During runtime it should find the local variable, otherwise its a global
         if let Some(distance) = distance {
             //eprintln!("distance of {} is {} of expr: {}", name.lexeme, distance, expr.to_string());
             self.get_at(*distance, &name.lexeme)

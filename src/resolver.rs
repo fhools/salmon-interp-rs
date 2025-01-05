@@ -3,6 +3,16 @@ use crate::lex::{Token};
 use crate::salmon_error;
 use crate::expr::{ExprKind, Expr, Stmt, Block, FunctionStmt, ReturnStmt, WhileStmt, BinaryExpr, CallExpr, GroupingExpr, LogicalExpr, UnaryExpr};
 use std::collections::HashMap;
+
+/* 
+ * The Resolver does a post-parsing analysis on the AST. It essential keeps track of the scope
+ * depth of every variable, and also keeps track of the scope depth for every expression so that
+ * when a variable is accessed the expression will utilize the same scope depth during runtime, 
+ * that was tracking during the resolution analysis. 
+ *
+ * Essentially this is implementing lexical scoping rules. At least this is my understanding of
+ * what Chapter 11 was about!
+ */
 pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
 }
@@ -116,6 +126,10 @@ impl Resolver {
             return;
         } 
         let mut i = (self.scopes.len() - 1) as isize; 
+
+        // This loop finds the variables scope depth, searching from the inner most scope to the outer
+        // most scope. When it finds it it registers with the interpreter the expression,
+        // the depth it used.
         while i >= 0  {
             //eprintln!("resolve local var {} depth: {}", name_tok.lexeme, i);
             if self.scopes.get_mut(i as usize).unwrap().contains_key(&name_tok.lexeme) {
