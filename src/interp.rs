@@ -190,6 +190,14 @@ impl Interpreter {
                         Ok(LoxValue::Return(None))
                     }
                 }
+            },
+            Stmt::Class(ref class_stmt) => {
+                let loxval = LoxValue::Nil;
+                eprintln!("defining class {} in env id : {}",class_stmt.name.lexeme, self.cur_env);
+                self.define(&class_stmt.name.lexeme, self.cur_env, loxval);
+                let loxclass = LoxClass{name: class_stmt.name.clone()};
+                self.define(&class_stmt.name.lexeme, self.cur_env, LoxValue::Class(loxclass));
+                Ok(LoxValue::Nil)
             }
             Stmt::ParseError => { todo!() }
         }
@@ -443,7 +451,8 @@ fn is_truthy(loxval: &LoxValue) -> bool {
         // false for now
         LoxValue::Nil | LoxValue::Return(_) => false,
         LoxValue::Bool(ref b) => *b,
-        LoxValue::Number(_) | LoxValue::String(_) | LoxValue::Function(_) => true,
+        LoxValue::Number(_) | LoxValue::String(_) | LoxValue::Function(_) |
+        LoxValue::Class(_) | LoxValue::Instance(_) => true, 
     }
 }
 
@@ -521,12 +530,26 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                     LoxValue::Function(ref callable) => {
                         callable.call(self, &arguments)
                     },
+                    LoxValue::Class(ref class) => {
+                        class.call(self, &arguments)
+                    },
                     _ => {
                         Err(RuntimeError::General("callee expression is not callable"))
                     }
                 }
 
             },
+            ExprKind::Get(get_expr) => {
+                let object = self.evaluate(&get_expr.object)?;
+                match object {
+                    LoxValue::Instance(instance) => {
+                        instance.get(&get_expr.name)
+                    },
+                    _ => {
+                        Err(RuntimeError::General("only instance have properties"))
+                    }
+                }
+            }
 
             a @ _ => {
                 eprintln!("unhandled expr: {:?}", a);
@@ -886,7 +909,8 @@ mod test {
 
     #[test]
     fn test_resolver() -> Result<(), RuntimeError> {
-        // test for loop, also test that local for var is shadowed and then destroyed after loop
+        // test that the resolver correctly implements lexical scoping.
+        // without lexical scoping the following lox code would output "global\nblock\n"
         let mut do_interpreter = LoxInterpreter {};
         do_interpreter
             .interpret_capture_output(
@@ -904,6 +928,28 @@ mod test {
             )
             .map(|s| {
                 assert_eq!(s, "global\nglobal\n");
+                Ok::<(), RuntimeError>(())
+            })?
+    }
+    #[test]
+    fn test_class_decl() -> Result<(), RuntimeError> {
+        // test that the resolver correctly implements lexical scoping.
+        // without lexical scoping the following lox code would output "global\nblock\n"
+        let mut do_interpreter = LoxInterpreter {};
+        do_interpreter
+            .interpret_capture_output(
+                r#"
+                class Foo {
+                    foo() { }
+                }
+                var foo_obj = Foo();
+                print foo_obj.test;
+              "#,
+            )
+            .map(|s| {
+                // before ExprKind::Set is implemented the Get is hardcoded
+                // to return 100
+                assert_eq!(s, "100\n");
                 Ok::<(), RuntimeError>(())
             })?
     }

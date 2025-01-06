@@ -1,6 +1,7 @@
 use super::lex::{self, Token};
 use std::fmt::{self, Display};
 use std::io::Write;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use super::interp::{RuntimeError, Interpreter};
@@ -15,6 +16,7 @@ pub enum Stmt {
     While(WhileStmt),
     Function(FunctionStmt),
     Return(ReturnStmt),
+    Class(ClassStmt),
     ParseError,
 }
 
@@ -74,6 +76,13 @@ impl StmtVisitor<String> for PrintVisitor {
                  Some(ref value_expr) => format!("(return {})", print_visitor.visit_expr(value_expr)),
                  None => format!("(return)") 
                 }
+            },
+            Stmt::Class(class_stmt) => {
+                let mut methods = String::new();
+                for a in &class_stmt.methods {
+                    methods = format!("{} {}", methods, a.name.lexeme);
+                }
+                format!("(class {} (methods {})", class_stmt.name.lexeme, methods)
             }
 
             Stmt::ParseError => { "Stmt::ParseError".to_string()},
@@ -137,6 +146,9 @@ pub enum LoxValue {
 
     // Dont know yet if this is really part of Crafting Interpreter's design
     Function(Box<dyn LoxCallable>),
+    // class
+    Class(LoxClass),
+    Instance(LoxInstance),
 
     // Note: this is not in Crafting Interpreters, its because Rust has no exceptions, 
     // to serve as an unwind mechanism for return statements
@@ -178,6 +190,52 @@ impl LoxCallable for LoxFunction {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LoxClass {
+    pub name: Token,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoxInstance {
+    pub klass: Box<LoxClass>,
+    pub fields: HashMap<String, LoxValue>,
+}
+
+impl LoxInstance {
+    pub fn get(&self, name: &Token) -> Result<LoxValue, RuntimeError> {
+        Ok(LoxValue::Number(100.0))
+        //Err(RuntimeError::General("lox instance get unimplemented"))
+    }
+}
+impl LoxCallable for LoxClass {
+    fn call(&self, interp: &mut Interpreter, arguments: &Vec<LoxValue>) -> Result<LoxValue, RuntimeError> {
+        eprintln!("calling class constructor for class {}", self.name.lexeme);
+        let lox_instance = 
+            LoxValue::Instance(LoxInstance{
+                klass: Box::new(self.clone()),
+                fields: HashMap::default(),
+            });
+        Ok(lox_instance)
+    }
+
+    fn clone_box(&self) -> Box<dyn LoxCallable> {
+        Box::new(LoxClass{name: self.name.clone()})
+    }
+}
+
+impl LoxCallable for LoxInstance {
+    fn call(&self, interp: &mut Interpreter, arguments: &Vec<LoxValue>) -> Result<LoxValue, RuntimeError> {
+        todo!("called call() on LoxInstance");
+        Ok(LoxValue::Nil)
+    }
+    fn clone_box(&self) -> Box<dyn LoxCallable> {
+        Box::new(LoxInstance{
+            klass: self.klass.clone(),
+            fields: self.fields.clone(),
+        })
+    }
+}
+
 impl ToString for LoxValue {
     fn to_string(&self) -> String {
         match self {
@@ -187,7 +245,9 @@ impl ToString for LoxValue {
             LoxValue::String(s) => s.clone(),
             LoxValue::Function(_l) => format!("callable()"),
             LoxValue::Return(None) =>  format!("return"),
-            LoxValue::Return(Some(ref box_lv)) => format!("{}",box_lv.to_string())
+            LoxValue::Return(Some(ref box_lv)) => format!("{}",box_lv.to_string()),
+            LoxValue::Class(c) => format!("class {}", c.name.lexeme),
+            LoxValue::Instance(i) => format!("instance of {}", i.klass.name.lexeme),
         }
     }
 }
@@ -225,7 +285,10 @@ pub struct CallExpr {
     pub arguments: Vec<Box<Expr>>,
 }
 #[derive(Debug, Clone)]
-pub struct GetExpr;
+pub struct GetExpr{
+    pub object: Box<Expr>,
+    pub name: Token, 
+}
 
 #[derive(Debug, Clone)]
 pub struct GroupingExpr {
@@ -283,6 +346,12 @@ pub struct FunctionStmt {
 pub struct ReturnStmt {
     pub return_tok: Token,
     pub value: Option<Box<Expr>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassStmt {
+    pub name: Token,
+    pub methods: Vec<FunctionStmt> 
 }
 
 pub trait ExprVisitor<R> {
@@ -403,6 +472,7 @@ impl ErrorVisitor {
             has_error: false
         }
     }
+
     pub fn has_error_node(&self) -> bool {
         self.has_error
     }

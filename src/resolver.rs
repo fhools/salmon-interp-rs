@@ -1,7 +1,7 @@
 use crate::interp::Interpreter;
 use crate::lex::Token;
 use crate::salmon_error;
-use crate::expr::{ExprKind, Expr, Stmt, Block, FunctionStmt, ReturnStmt, WhileStmt, BinaryExpr, CallExpr, GroupingExpr, LogicalExpr, UnaryExpr};
+use crate::expr::{ExprKind, Expr, Stmt, Block, FunctionStmt, ReturnStmt, WhileStmt, BinaryExpr, CallExpr, GroupingExpr, LogicalExpr, UnaryExpr, ClassStmt, GetExpr};
 use std::collections::HashMap;
 
 /* 
@@ -16,6 +16,7 @@ use std::collections::HashMap;
 pub struct Resolver {
     scopes: Vec<HashMap<String, bool>>,
 }
+
 impl Default for Resolver {
     fn default() -> Self {
         Resolver {
@@ -75,6 +76,11 @@ impl Resolver {
                 self.resolve(interp, statements);
                 self.end_scope();
             },
+            Stmt::Class(ClassStmt{ ref name, ..}) => {
+                eprintln!("resolver defining {}", name.lexeme);
+                self.declare(name);
+                self.define(name);
+            },
             _ => {}
         }
     }
@@ -117,6 +123,9 @@ impl Resolver {
             },
             ExprKind::Unary(UnaryExpr{ ref expr, ..}) => {
                 self.resolve_expr(interp, expr);
+            },
+            ExprKind::Get(GetExpr{ref object, ..}) => {
+                self.resolve_expr(interp, object);
             },
            _ => {} 
         }

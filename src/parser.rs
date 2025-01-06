@@ -15,9 +15,9 @@ pub(crate) struct Parser {
 
 impl Parser {
 
-    pub fn new(tokens: &Vec<Token>) -> Self {
+    pub fn new(tokens: &[Token]) -> Self {
         Parser {
-            tokens: tokens.clone(),
+            tokens: tokens.to_vec(),
             current: 0,
             need_sync: false
         }
@@ -83,9 +83,9 @@ impl Parser {
     // converts an Expr into a Result<Box<Expr>, ParseError> by 
     // checking the expr for any ParseError nodes
     fn check_parse_error(&self, expr: Expr) -> Result<Box<Expr>, ParseError> {
-       let mut errorVisitor = ErrorVisitor::new();
-       errorVisitor.visit_expr(&expr);
-       if errorVisitor.has_error_node() {
+       let mut error_visitor = ErrorVisitor::new();
+       error_visitor.visit_expr(&expr);
+       if error_visitor.has_error_node() {
            let mut print_visitor = PrintVisitor{};
            let err_print = print_visitor.visit_expr(&expr);
            println!("err print: {}", err_print);
@@ -127,12 +127,15 @@ impl Parser {
     }
 
 
-    // delaration := vardecl 
+    // delaration := class_decl 
+    //              | vardecl 
     //              | function_decl
     //              | statement 
     fn declaration(&mut self) -> Stmt {
         let stmt;
-        if self.match_any_of(&[LoxToken![Fun]]) {
+        if self.match_any_of(&[LoxToken![Class]]) {
+            stmt = self.class_decl();
+        } else if self.match_any_of(&[LoxToken![Fun]]) {
             stmt = self.function("function");
         } else if self.match_any_of(&[LoxToken![Var]]) {
             stmt = self.var_declaration();
@@ -147,7 +150,34 @@ impl Parser {
         }
         stmt
     }
-   
+  
+    // class_decl := "class" IDENTIFIER "{" function* "}"
+    fn class_decl(&mut self) -> Stmt {
+
+        // need to unwrap and clone the token, for the borrow checker
+        let class_name =  match self.consume(&LoxToken![Identifier("".to_string())], "expected class name") {
+            Ok(class_name) => class_name.clone(),
+            Err(_) => return Stmt::ParseError
+        };
+        self.consume(&LoxToken![LeftBrace], "expecting '{{' before class body");
+
+        let mut methods = Vec::new();
+
+        // NOTE: need to assign results of check into a temp block to satisfy borrow checker, so
+        // that the borrow by check() does not last the whole body
+        while { let not_right_paren = !self.check(&LoxToken![RightBrace]); 
+            not_right_paren }  {
+                if let Stmt::Function(ref function_stmt) = self.function("method") {
+                methods.push(function_stmt.clone());
+            } else {
+                let tok_line = self.previous().clone();
+                salmon_error(tok_line.line, "unexpected statements in class body, expected methods");
+            }
+        }
+        self.consume(&LoxToken![RightBrace], "expected '}' after class body ");
+        Stmt::Class(ClassStmt{ name: class_name, methods})
+    }
+    
     // function_decl := 'fun' function 
     fn function(&mut self, kind: &str) -> Stmt {
         // TODO: we are using unwrap() here on the self.consume() calls to get the Token. 
@@ -252,8 +282,7 @@ impl Parser {
 
         self.consume(&LoxToken![LeftParen], "expected '(' following 'for'");
 
-        let mut initializer = None;
-
+        let initializer;
         // if the next token is a semicolon that means there is no var/expression initializer
         if self.match_any_of(&[LoxToken![Semicolon]]) {
             initializer =  None
@@ -267,12 +296,12 @@ impl Parser {
         }
       
         // there is an optional condition, if not present its a while(true) equivalent
-        let mut condition = None;
-        if !self.check(&LoxToken![Semicolon]) {
-            condition = Some(self.expression());
+        let condition = if !self.check(&LoxToken![Semicolon]) {
+            Some(self.expression())
         } else {
-            condition = Some(Box::new(new_expr(ExprKind::Literal(LiteralExpr{val: LoxValue::Bool(true)}))));
-        }
+            Some(Box::new(new_expr(ExprKind::Literal(LiteralExpr{val: LoxValue::Bool(true)}))))
+        };
+
         self.consume(&LoxToken![Semicolon], "expected ';' after condition for 'for'");
 
         let mut increment = None;
@@ -466,7 +495,8 @@ impl Parser {
         }
     }
 
-    // call := primary ( "(" arguments? ")" )* 
+    // call parses the following: either a primary, funcall() or obj.field 
+    // call := primary ( "(" arguments? ")" | "." IDENTIFIER )* 
     fn call(&mut self) -> Box<Expr> {
         // this is interesting parsing trick, if there are no () suffix, its just a 
         // regular primary expression not a call expression
@@ -475,6 +505,17 @@ impl Parser {
             // if we find a ( next then it must be a call
             if self.match_any_of(&[LoxToken![LeftParen]]) {
                 expr = self.finish_call(expr);
+            } else if self.match_any_of(&[LoxToken![Dot]]) {
+                let name = self.consume(&LoxToken![Identifier("".to_string())], "expect property after '.'");
+                match name {
+                    Ok(tok) => {
+                        expr = Box::new(new_expr(ExprKind::Get(GetExpr{ object: expr, name: tok.clone()})));
+                    },
+                    Err(_) => {
+                        expr = Box::new(new_expr(ExprKind::ParseError));
+                        return expr;
+                    }
+                }
             } else {
                 break;
             }
