@@ -205,16 +205,23 @@ pub struct LoxInstance {
 }
 
 impl LoxInstance {
-    pub fn get(&self, name: &Token) -> Result<LoxValue, RuntimeError> {
+    pub fn get(&self , rcself: &Rc<RefCell<LoxInstance>>, name: &Token, interp: &mut Interpreter) -> Result<LoxValue, RuntimeError> {
+        let instance = rcself.clone();
         eprintln!("getting obj field {}", name.lexeme);
         if self.fields.contains_key(&name.lexeme) {
-            let field_val = self.fields.get(&name.lexeme).unwrap();
-            eprintln!("field value: {}", field_val.to_string());
+            let field_val = self.fields.get(&name.lexeme).unwrap().clone();
+            //eprintln!("field value: {}", field_val.to_string());
             Ok(field_val.clone())
         } else if self.klass.methods.contains_key(&name.lexeme) {
-            eprintln!("found method {}", name.lexeme);
-            Ok(LoxValue::Function(Box::new(
-                        self.klass.methods.get(&name.lexeme).unwrap().clone())))
+            // bind the method by creating a new closure 
+            let func = self.klass.methods.get(&name.lexeme).unwrap().clone();
+            let bound_env_id = interp.push_env(func.closure);
+            let bound_func = LoxFunction { function: func.function, closure: bound_env_id };
+            //eprintln!("get binding method and adding this keyword to bound_env_id : {}", bound_env_id);
+            interp.define("this", bound_env_id, LoxValue::Instance(instance));
+            //eprintln!("found method {}", name.lexeme);
+            //need to 
+            Ok(LoxValue::Function(Box::new(bound_func)))
         } else {
             eprintln!("could not find {}", name.lexeme);
             Err(RuntimeError::General(
@@ -229,7 +236,7 @@ impl LoxInstance {
 }
 impl LoxCallable for LoxClass {
     fn call(&self, interp: &mut Interpreter, arguments: &Vec<LoxValue>) -> Result<LoxValue, RuntimeError> {
-        eprintln!("calling class constructor for class {}", self.name.lexeme);
+        //eprintln!("calling class constructor for class {}", self.name.lexeme);
         let lox_instance = LoxInstance{
                 klass: Box::new(self.clone()),
                 fields: HashMap::default(),
@@ -339,7 +346,10 @@ pub struct SetExpr {
 #[derive(Debug, Clone)]
 pub struct SuperExpr;
 #[derive(Debug, Clone)]
-pub struct ThisExpr;
+pub struct ThisExpr
+{
+    pub keyword: Token,
+}
 #[derive(Debug, Clone)]
 pub struct UnaryExpr {
     pub op: lex::Token,
@@ -413,7 +423,7 @@ impl ExprVisitor<String> for PrintVisitor {
             }
             ExprKind::Set(SetExpr) => {String::new()},
             ExprKind::Super(SuperExpr) => {String::new()},
-            ExprKind::This(ThisExpr) => {String::new()},
+            ExprKind::This(ThisExpr) => {"this".to_string()},
             ExprKind::Unary(unary) => {
                 format!("({} {})", 
                         unary.op.lexeme,

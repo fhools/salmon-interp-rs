@@ -76,10 +76,21 @@ impl Resolver {
                 self.resolve(interp, statements);
                 self.end_scope();
             },
-            Stmt::Class(ClassStmt{ ref name, ..}) => {
-                eprintln!("resolver defining {}", name.lexeme);
+            Stmt::Class(ClassStmt{ ref name, ref methods }) => {
+                //eprintln!("resolver defining {}", name.lexeme);
                 self.declare(name);
                 self.define(name);
+                self.begin_scope();
+                if let Some(last) = self.scopes.last_mut() {
+                    last.insert("this".to_string(), true);
+                } else {
+                    eprintln!("resolve couldn't insert this keywotrd");
+                }
+                for method in methods {
+                    self.resolve_function(interp, method);
+                }
+                self.end_scope()
+
             },
             _ => {}
         }
@@ -130,6 +141,10 @@ impl Resolver {
             ExprKind::Set(SetExpr{ref object, ref value, ..}) => {
                 self.resolve_expr(interp, object);
                 self.resolve_expr(interp, value);
+            },
+            ExprKind::This(ref this_expr) => {
+                //eprintln!("resolving this the tok is: {}, scope len is {}", this_expr.keyword, self.scopes.len());
+                self.resolve_local(interp, expr, &this_expr.keyword);
             },
            _ => {} 
         }

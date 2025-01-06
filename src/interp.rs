@@ -95,6 +95,7 @@ impl Interpreter {
             //eprintln!("distance of {} is {} of expr: {}", name.lexeme, distance, expr.to_string());
             self.get_at(*distance, &name.lexeme)
         } else {
+            //eprintln!("distance not found for {}, using global", name.lexeme);
             self.get(&name.lexeme, self.global_env_id(), 0)
         }
     }
@@ -196,7 +197,7 @@ impl Interpreter {
             },
             Stmt::Class(ref class_stmt) => {
                 let loxval = LoxValue::Nil;
-                eprintln!("defining class {} in env id : {}",class_stmt.name.lexeme, self.cur_env);
+                //eprintln!("defining class {} in env id : {}",class_stmt.name.lexeme, self.cur_env);
                 self.define(&class_stmt.name.lexeme, self.cur_env, loxval);
 
                 let mut loxclass = LoxClass{name: class_stmt.name.clone(), methods: HashMap::new()};
@@ -286,7 +287,7 @@ impl Interpreter {
         // or this one using early return?
         //eprintln!("looking in env_id {}", env_id);
         if let Some(value) = self.environments[env_id].values.get(source) {
-            //eprintln!("env get level: {} key: {}  val: {}", level, source, value.to_string());
+            //eprintln!("env found level: {} key: {}  val: {}", level, source, value.to_string());
             return Ok(value.clone());
         }
         if level == 20 {
@@ -296,6 +297,7 @@ impl Interpreter {
             //eprintln!("did not find in env_id {} looking in id {}", env_id, enclosing_id);
             return self.get(source, *enclosing_id,level + 1);
         }
+        eprintln!("get failed, env id {} did not have enclosing id", env_id);
         Err(RuntimeError::General(Box::leak(
             format!("undefined variable {}", source).into_boxed_str(),
         )))
@@ -306,14 +308,14 @@ impl Interpreter {
         Ok(())
     }
 
-    fn assign(&mut self, name: impl AsRef<str>, env_id: usize,  value: LoxValue, level: usize) -> Result<(), RuntimeError> {
+    pub fn assign(&mut self, name: impl AsRef<str>, env_id: usize,  value: LoxValue, level: usize) -> Result<(), RuntimeError> {
         let name = name.as_ref();
         if self.environments[env_id].values.contains_key(name) {
-            //eprintln!("env assign level: {} key: {} val {}", level, name, value.to_string());
+            //eprintln!("env assign env_id: {} key: {} val {}", env_id, name, value.to_string());
             self.environments[env_id].values.insert(name.to_owned(), value);
             Ok(())
         } else if let Some(ref env_id) = self.environments[env_id].enclosing_env {
-            //eprintln!("not found in env.assign level: {} key: {} val {}", level, name, value.to_string());
+            //eprintln!("not found in env.assign env_id: {} key: {} val {}", env_id, name, value.to_string());
             self.assign(name, *env_id, value, level + 1)
         } else {
             Err(RuntimeError::General(Box::leak(
@@ -559,7 +561,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 let object = self.evaluate(&get_expr.object)?;
                 match object {
                     LoxValue::Instance(instance) => {
-                        instance.borrow().get(&get_expr.name)
+                        instance.borrow().get(&instance, &get_expr.name, self)
                     },
                     _ => {
                         Err(RuntimeError::General("only instance have properties"))
@@ -583,6 +585,10 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                         Err(RuntimeError::General("only instances have properties to set"))
                     }
                 }
+            },
+            ExprKind::This(this_expr) => {
+                //eprintln!("looking up this, current env id: {}", self.cur_env);
+                self.lookup_variable(&this_expr.keyword, expr)
             },
 
             a @ _ => {
@@ -703,7 +709,7 @@ mod test {
                 val
             })
             .unwrap();
-        eprintln!("expr_val: {}", expr_val);
+        //eprintln!("expr_val: {}", expr_val);
         assert!(expr_val.is_nan())
     }
 
@@ -975,7 +981,7 @@ mod test {
                 r#"
                 class Foo {
                     foo() {
-                        print 200;
+                        print this.test;
                     }
                 }
                 var foo_obj = Foo();
@@ -987,7 +993,7 @@ mod test {
             .map(|s| {
                 // before ExprKind::Set is implemented the Get is hardcoded
                 // to return 100
-                assert_eq!(s, "100\n200\n");
+                assert_eq!(s, "100\n100\n");
                 Ok::<(), RuntimeError>(())
             })?
     }

@@ -550,6 +550,7 @@ impl Parser {
     }
 
     // primary := NUMBER | STRING | "true" | "false" | "nil" 
+    //           | "this"
     //           | identifier 
     //           | '(' expression ')'
     fn primary(&mut self) -> Box<Expr> {
@@ -570,6 +571,8 @@ impl Parser {
                     _ => { ExprKind::ParseError }
             };
             Box::new(new_expr(expr))
+        } else if self.match_any_of(&[LoxToken![This]]) {
+            Box::new(new_expr(ExprKind::This(ThisExpr{ keyword: self.previous().clone()})))
         } else if self.match_any_of(&[LoxToken![Identifier("".to_string())]]) {
             Box::new(new_expr(ExprKind::Variable(VariableExpr{name:self.previous().clone()})))
         } else if self.match_any_of(&[LoxToken![LeftParen]]) {
