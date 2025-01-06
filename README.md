@@ -2,9 +2,10 @@
 This is a implementation of the Lox interpreter from Bob Nystrom's wonderful book Crafting Interpreters in Rust.
 
 # Status
-Last completed chapter is Chapter 11.
+Last completed chapter is Chapter 12.
 
-Still need to add classes, inheritence.
+[ ] Inheritance
+[ ] Semantic analysis of return statement, must be only within functions
 
 # Rustisms
 The Expr/Stmt class hierarchy is replaced by enum's. We had to use `Box<Expr>` and `Box<Stmt>` to get around
