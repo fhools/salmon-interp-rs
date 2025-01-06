@@ -4,6 +4,8 @@ use std::io::Write;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::RefCell;
+use std::rc::Rc;
 use super::interp::{RuntimeError, Interpreter};
 
 #[derive(Debug, Clone)]
@@ -120,10 +122,10 @@ pub enum ExprKind {
     Binary(BinaryExpr),
     Call(CallExpr),
     Get(GetExpr),
+    Set(SetExpr),
     Grouping(GroupingExpr),
     Literal(LiteralExpr),
     Logical(LogicalExpr),
-    Set(SetExpr),
     Super(SuperExpr),
     This(ThisExpr),
     Unary(UnaryExpr),
@@ -147,8 +149,8 @@ pub enum LoxValue {
     // Dont know yet if this is really part of Crafting Interpreter's design
     Function(Box<dyn LoxCallable>),
     // class
-    Class(LoxClass),
-    Instance(LoxInstance),
+    Class(Rc<RefCell<LoxClass>>),
+    Instance(Rc<RefCell<LoxInstance>>),
 
     // Note: this is not in Crafting Interpreters, its because Rust has no exceptions, 
     // to serve as an unwind mechanism for return statements
@@ -160,7 +162,7 @@ pub trait LoxCallable : Debug {
     fn clone_box(&self) -> Box<dyn LoxCallable>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoxFunction {
     // TODO: should I store this as a Box<Stmt> instead?
     pub function: Box<FunctionStmt>,
@@ -193,6 +195,7 @@ impl LoxCallable for LoxFunction {
 #[derive(Debug, Clone)]
 pub struct LoxClass {
     pub name: Token,
+    pub methods: HashMap<String, LoxFunction>,
 }
 
 #[derive(Debug, Clone)]
@@ -203,23 +206,43 @@ pub struct LoxInstance {
 
 impl LoxInstance {
     pub fn get(&self, name: &Token) -> Result<LoxValue, RuntimeError> {
-        Ok(LoxValue::Number(100.0))
+        eprintln!("getting obj field {}", name.lexeme);
+        if self.fields.contains_key(&name.lexeme) {
+            let field_val = self.fields.get(&name.lexeme).unwrap();
+            eprintln!("field value: {}", field_val.to_string());
+            Ok(field_val.clone())
+        } else if self.klass.methods.contains_key(&name.lexeme) {
+            eprintln!("found method {}", name.lexeme);
+            Ok(LoxValue::Function(Box::new(
+                        self.klass.methods.get(&name.lexeme).unwrap().clone())))
+        } else {
+            eprintln!("could not find {}", name.lexeme);
+            Err(RuntimeError::General(
+                    Box::leak(format!("could not find field {}", name.lexeme).into_boxed_str())))
+        }
         //Err(RuntimeError::General("lox instance get unimplemented"))
+    }
+
+    pub fn set(&mut self, name: &Token, loxval: LoxValue) {
+        self.fields.insert(name.lexeme.to_owned(), loxval);
     }
 }
 impl LoxCallable for LoxClass {
     fn call(&self, interp: &mut Interpreter, arguments: &Vec<LoxValue>) -> Result<LoxValue, RuntimeError> {
         eprintln!("calling class constructor for class {}", self.name.lexeme);
-        let lox_instance = 
-            LoxValue::Instance(LoxInstance{
+        let lox_instance = LoxInstance{
                 klass: Box::new(self.clone()),
                 fields: HashMap::default(),
-            });
-        Ok(lox_instance)
+            };
+        let rcloxinstance = Rc::new(RefCell::new(lox_instance));
+        Ok(LoxValue::Instance(rcloxinstance))
     }
 
     fn clone_box(&self) -> Box<dyn LoxCallable> {
-        Box::new(LoxClass{name: self.name.clone()})
+        Box::new(LoxClass{
+            name: self.name.clone(),
+            methods: HashMap::new()
+        })
     }
 }
 
@@ -246,8 +269,8 @@ impl ToString for LoxValue {
             LoxValue::Function(_l) => format!("callable()"),
             LoxValue::Return(None) =>  format!("return"),
             LoxValue::Return(Some(ref box_lv)) => format!("{}",box_lv.to_string()),
-            LoxValue::Class(c) => format!("class {}", c.name.lexeme),
-            LoxValue::Instance(i) => format!("instance of {}", i.klass.name.lexeme),
+            LoxValue::Class(ref c) => format!("class {}", c.borrow().name.lexeme),
+            LoxValue::Instance(i) => format!("instance of {}", i.borrow().klass.name.lexeme),
         }
     }
 }
@@ -307,7 +330,12 @@ pub struct LogicalExpr {
 }
 
 #[derive(Debug, Clone)]
-pub struct SetExpr;
+pub struct SetExpr {
+    pub object: Box<Expr>,
+    pub name: Token, 
+    pub value: Box<Expr>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SuperExpr;
 #[derive(Debug, Clone)]

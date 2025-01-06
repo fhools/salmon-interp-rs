@@ -1,7 +1,7 @@
 use crate::interp::Interpreter;
 use crate::lex::Token;
 use crate::salmon_error;
-use crate::expr::{ExprKind, Expr, Stmt, Block, FunctionStmt, ReturnStmt, WhileStmt, BinaryExpr, CallExpr, GroupingExpr, LogicalExpr, UnaryExpr, ClassStmt, GetExpr};
+use crate::expr::{ExprKind, Expr, Stmt, Block, FunctionStmt, ReturnStmt, WhileStmt, BinaryExpr, CallExpr, GroupingExpr, LogicalExpr, UnaryExpr, ClassStmt, GetExpr, SetExpr};
 use std::collections::HashMap;
 
 /* 
@@ -126,6 +126,10 @@ impl Resolver {
             },
             ExprKind::Get(GetExpr{ref object, ..}) => {
                 self.resolve_expr(interp, object);
+            },
+            ExprKind::Set(SetExpr{ref object, ref value, ..}) => {
+                self.resolve_expr(interp, object);
+                self.resolve_expr(interp, value);
             },
            _ => {} 
         }

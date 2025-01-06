@@ -376,7 +376,7 @@ impl Parser {
     }
 
     // IDENTIFIER but really goes parsed as only VariableExpr i.e. lvalue
-    // assignment := IDENTIFIER = assignment
+    // assignment := (call ".")? IDENTIFIER = assignment
     //              | logical_or 
     fn assignment(&mut self) -> Box<Expr> {
         // The implementation of this from the book is notable for the following reasons: 
@@ -400,6 +400,13 @@ impl Parser {
             match &expr.kind {
                 ExprKind::Variable(var) => {
                     Box::new(new_expr(ExprKind::Assign(AssignExpr{name: var.name.clone(), value})))
+                },
+
+                // if we parsed a Get then transform it into a Set since we saw an equal
+                ExprKind::Get(get_expr) => {
+                    Box::new(new_expr(ExprKind::Set(SetExpr{
+                        object: get_expr.object.clone(), name: get_expr.name.clone(), value
+                    })))
                 },
                 _ => {
                     eprintln!("not an lvalue for var assignment");

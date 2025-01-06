@@ -4,6 +4,8 @@ use crate::resolver::Resolver;
 use crate::parser::{do_expr, Parser};
 use std::collections::HashMap;
 use std::io::{self, Write, Cursor};
+use std::rc::Rc;
+use std::cell::RefCell;
 use std::any::Any;
 
 // this AnyWrite/WriteAny is to allow us to coerce the Write dyn object into a Cursor
@@ -175,7 +177,8 @@ impl Interpreter {
                 let closure_id = self.push_env(self.cur_env);
                 let new_function = LoxFunction{ 
                     function: Box::new(function_stmt.clone()), 
-                    closure: closure_id};
+                    closure: closure_id}
+                ;
                 let loxval = LoxValue::Function(Box::new(new_function));
                 self.define(&function_stmt.name.lexeme, self.cur_env, loxval);
                 Ok(LoxValue::Nil)
@@ -195,8 +198,21 @@ impl Interpreter {
                 let loxval = LoxValue::Nil;
                 eprintln!("defining class {} in env id : {}",class_stmt.name.lexeme, self.cur_env);
                 self.define(&class_stmt.name.lexeme, self.cur_env, loxval);
-                let loxclass = LoxClass{name: class_stmt.name.clone()};
-                self.define(&class_stmt.name.lexeme, self.cur_env, LoxValue::Class(loxclass));
+
+                let mut loxclass = LoxClass{name: class_stmt.name.clone(), methods: HashMap::new()};
+
+                for method in &class_stmt.methods {
+                    let closure_id = self.push_env(self.cur_env);
+                    let new_function = LoxFunction{ 
+                        function: Box::new(method.clone()), 
+                        closure: closure_id};
+                    loxclass.methods.insert(method.name.lexeme.clone(), new_function);
+                }
+
+                let mut loxclass_rc = Rc::new(RefCell::new(loxclass));
+
+                self.define(&class_stmt.name.lexeme, self.cur_env, LoxValue::Class(loxclass_rc));
+
                 Ok(LoxValue::Nil)
             }
             Stmt::ParseError => { todo!() }
@@ -531,7 +547,7 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                         callable.call(self, &arguments)
                     },
                     LoxValue::Class(ref class) => {
-                        class.call(self, &arguments)
+                        class.borrow_mut().call(self, &arguments)
                     },
                     _ => {
                         Err(RuntimeError::General("callee expression is not callable"))
@@ -543,13 +559,31 @@ impl ExprVisitor<Result<LoxValue, RuntimeError>> for Interpreter {
                 let object = self.evaluate(&get_expr.object)?;
                 match object {
                     LoxValue::Instance(instance) => {
-                        instance.get(&get_expr.name)
+                        instance.borrow().get(&get_expr.name)
                     },
                     _ => {
                         Err(RuntimeError::General("only instance have properties"))
                     }
                 }
-            }
+            },
+            ExprKind::Set(set_expr) => {
+                let object = self.evaluate(&set_expr.object)?;
+                match object {
+                    LoxValue::Instance(instance) => {
+                        let value = self.evaluate(&set_expr.value);
+                        match value {
+                            Ok(loxval) => {
+                                instance.borrow_mut().set(&set_expr.name, loxval.clone());
+                                Ok(loxval)
+                            },
+                            Err(_) => value
+                        }
+                    },
+                    _ => {
+                        Err(RuntimeError::General("only instances have properties to set"))
+                    }
+                }
+            },
 
             a @ _ => {
                 eprintln!("unhandled expr: {:?}", a);
@@ -940,16 +974,20 @@ mod test {
             .interpret_capture_output(
                 r#"
                 class Foo {
-                    foo() { }
+                    foo() {
+                        print 200;
+                    }
                 }
                 var foo_obj = Foo();
+                foo_obj.test = 100;
                 print foo_obj.test;
+                foo_obj.foo();
               "#,
             )
             .map(|s| {
                 // before ExprKind::Set is implemented the Get is hardcoded
                 // to return 100
-                assert_eq!(s, "100\n");
+                assert_eq!(s, "100\n200\n");
                 Ok::<(), RuntimeError>(())
             })?
     }
